@@ -124,6 +124,7 @@ local order = {
         "cloud_storage",
         "move_to_archive",
         "wallabag",
+        "instapaper",
         "news_downloader",
         "text_editor",
         "profiles",
