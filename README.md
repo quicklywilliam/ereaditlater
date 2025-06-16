@@ -8,9 +8,13 @@ This is very much a work in progress, with the current implementation being a pl
 ## Features
 
 [x] Authenticate with Instapaper account
+
 [] Browse saved articles
+
 [] Open articles in KOReader
+
 [] Download articles for offline reading
+
 
 ## Contributing
 
