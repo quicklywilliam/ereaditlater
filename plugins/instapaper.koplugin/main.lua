@@ -3,10 +3,12 @@ local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local logger = require("logger")
 local util = require("util")
+local Trapper = require("ui/trapper")
 local InstapaperManager = require("frontend/ui/instapaper/manager")
 
 local Instapaper = WidgetContainer:extend{
     name = "instapaper",
+    kv = nil, -- KeyValuePage
 }
 
 function Instapaper:init()
@@ -17,22 +19,11 @@ end
 function Instapaper:addToMainMenu(menu_items)
     menu_items.instapaper = {
         text = "Instapaper",
-        sub_item_table = {
-            {
-                text = "Login",
-                keep_menu_open = true,
-                callback = function()
-                    self.uimanager:showLoginDialog()
-                end,
-            },
-            {
-                text = "Show Articles",
-                keep_menu_open = true,
-                callback = function()
-                    self.uimanager:showArticles()
-                end,
-            },
-        },
+        callback = function()
+            Trapper:wrap(function()
+                self.uimanager:showArticles()
+            end)
+        end,
     }
 end
 

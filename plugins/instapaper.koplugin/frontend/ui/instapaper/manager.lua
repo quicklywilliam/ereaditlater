@@ -5,7 +5,8 @@ local ConfirmBox = require("ui/widget/confirmbox")
 local NetworkMgr = require("ui/network/manager")
 local MultiInputDialog = require("ui/widget/multiinputdialog")
 local logger = require("logger")
-
+local KeyValuePage = require("ui/widget/keyvaluepage")
+local InstapaperOAuth = require("lib/oauth")
 local InstapaperManager = {}
 
 function InstapaperManager:new()
@@ -15,6 +16,10 @@ function InstapaperManager:new()
     manager.username = nil
     manager.token = nil
     manager.token_secret = nil
+    manager.oauth = nil
+
+    manager.consumer_key = ""
+    manager.consumer_secret = ""
     
     setmetatable(manager, self)
     self.__index = self
@@ -23,10 +28,8 @@ function InstapaperManager:new()
 end
 
 function InstapaperManager:showLoginDialog()
-    logger.info("Show Instapaper login dialog...")
-
-    self.login_dialog = MultiInputDialog:new {
-        title = "Instapaper Login",
+    self.login_dialog = MultiInputDialog:new{
+        title = "Login",
         fields = {
             {
                 name = "username",
@@ -52,65 +55,55 @@ function InstapaperManager:showLoginDialog()
                 {
                     text = "Login",
                     callback = function()
-                        local myfields = self.login_dialog:getFields()
-                        self.username      = myfields[1]
-                        self.password      = myfields[2]
+                        local fields = self.login_dialog:getFields()
+                        self.username = fields.username
+                        self.password = fields.password
                         self:login()
                     end
                 },
             },
-        },
+        }
     }
     UIManager:show(self.login_dialog)
     self.login_dialog:onShowKeyboard()
 end
 
 function InstapaperManager:login()
-    -- TODO: Implement actual login logic using OAuth 1.0a
-    NetworkMgr:runWhenOnline(function()
-        -- This is where we would implement the OAuth flow
-        logger.info("Attempting to login to Instapaper...")
-        
-        -- For now, just simulate a successful login
-        self.is_authenticated = true
-        self.username = self.username
-        
-        -- Return a success message dialog
+    if not self.consumer_key or not self.consumer_secret then
         UIManager:show(ConfirmBox:new{
-            text = "Successfully logged in to Instapaper!",
+            text = "Please enter your Consumer Key and Secret",
             no_ok_button = true,
             cancel_text = "Got it",
             cancel_callback = function()
                 UIManager:close(self.login_dialog)
             end
         })
+        return
+    end
+
     end)
 end
 
 function InstapaperManager:showArticles()
-    -- TODO: Implement article listing UI
+    local UI = require("ui/trapper")
+
+    if self.kv then
+        UIManager:close(self.kv)
+    end
+
+    self.kv = KeyValuePage:new{
+        title = _("Instapaper"),
+        value_overflow_align = "right",
+        kv_pairs = view_content,
+        callback_return = function()
+            UIManager:close(self.kv)
+        end
+    }
+    UIManager:show(self.kv)
+
     if not self.is_authenticated then
         return self:showLoginDialog()
     end
-    
-    -- Return a placeholder dialog for now
-    return InputDialog:new{
-        title = "Instapaper Articles",
-        fields = {
-            {
-                name = "status",
-                text = "Not implemented yet",
-            },
-        },
-        buttons = {
-            {
-                text = "OK",
-                callback = function(dialog)
-                    UIManager:close(dialog)
-                end,
-            },
-        },
-    }
 end
 
 return InstapaperManager
