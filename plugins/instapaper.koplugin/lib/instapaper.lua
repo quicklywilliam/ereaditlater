@@ -69,51 +69,6 @@ function Instapaper:generateSignatureBaseString(method, url, params)
     return base_string
 end
 
--- Pure Lua SHA1 implementation using sha2 library
-local function sha1(data)
-    local sha2 = require("ffi/sha2")
-    -- Use sha2's SHA1 function and convert hex to binary
-    local hex_result = sha2.sha1(data)
-    
-    -- Convert hex string to binary
-    local result = ""
-    for i = 1, #hex_result, 2 do
-        local byte = tonumber(hex_result:sub(i, i+1), 16)
-        result = result .. string.char(byte)
-    end
-    
-    return result
-end
-
--- Pure Lua HMAC-SHA1 implementation
-local function hmac_sha1(key, message)
-    local bit = require("bit")
-    local blocksize = 64
-    
-    -- If key is longer than block size, hash it
-    if #key > blocksize then
-        key = sha1(key)
-    end
-    
-    -- Pad key to block size
-    key = key .. string.rep("\0", blocksize - #key)
-    
-    -- Create outer and inner padding
-    local o_key_pad = ""
-    local i_key_pad = ""
-    for i = 1, blocksize do
-        local k = string.byte(key, i)
-        o_key_pad = o_key_pad .. string.char(bit.bxor(k, 0x5c))
-        i_key_pad = i_key_pad .. string.char(bit.bxor(k, 0x36))
-    end
-    
-    -- Calculate inner and outer hashes
-    local inner = sha1(i_key_pad .. message)
-    local digest = sha1(o_key_pad .. inner)
-    
-    return digest
-end
-
 function Instapaper:signRequest(method, url, params, consumer_secret, token_secret)
     -- Generate signature base string
     local base_string = self:generateSignatureBaseString(method, url, params)
@@ -122,10 +77,12 @@ function Instapaper:signRequest(method, url, params, consumer_secret, token_secr
     local encoded_consumer = self:percentEncode(consumer_secret)
     local encoded_token = token_secret and self:percentEncode(token_secret) or ""
     local signing_key = encoded_consumer .. "&" .. encoded_token
-        
-    local signature = hmac_sha1(signing_key, base_string)
     
     local sha2 = require("ffi/sha2")
+    local hex_result = sha2.hmac(sha2.sha1, signing_key, base_string)
+    local signature = sha2.hex_to_bin(hex_result)
+    
+    -- Base64 encode the signature
     local encoded = sha2.bin_to_base64(signature)
         
     return encoded
