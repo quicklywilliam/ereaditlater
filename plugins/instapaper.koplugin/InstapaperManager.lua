@@ -23,6 +23,10 @@ function InstapaperManager:new()
     o.username = o:loadUsername()
     o.is_authenticated = o:isAuthenticated()
     
+    -- In-memory data store for articles
+    o.articles = {}
+    o.last_sync_time = nil
+    
     if o.is_authenticated then
         logger.dbg("instapaper: Loaded stored tokens, authenticated as", o.username or "unknown user")
     else
@@ -98,6 +102,9 @@ function InstapaperManager:logout()
     self.token_secret = nil
     self.is_authenticated = false
     self.username = nil
+    -- Clear in-memory data store
+    self.articles = {}
+    self.last_sync_time = nil
     logger.dbg("instapaper: Logged out and cleared tokens")
 end
 
@@ -129,6 +136,35 @@ function InstapaperManager:authenticate(username, password)
         
         return false
     end
+end
+
+function InstapaperManager:syncReads()
+    if not self:isAuthenticated() then
+        logger.err("instapaper: Cannot sync reads - not authenticated")
+        return false
+    end
+    
+    logger.dbg("instapaper: Syncing reads from Instapaper...")
+    
+    local success, articles = self.instapaper_api_manager:getArticles(self.token, self.token_secret)
+    
+    if success and articles then
+        self.articles = articles
+        self.last_sync_time = os.time()
+        logger.dbg("instapaper: Successfully synced", #articles, "articles")
+        return true
+    else
+        logger.err("instapaper: Failed to sync reads")
+        return false
+    end
+end
+
+function InstapaperManager:getArticles()
+    return self.articles
+end
+
+function InstapaperManager:getLastSyncTime()
+    return self.last_sync_time
 end
 
 return InstapaperManager

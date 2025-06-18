@@ -143,7 +143,37 @@ function Instapaper:showArticles()
         UIManager:close(self.kv)
     end
 
-    local status_text = "Authenticated as " .. (self.instapaperManager.username or "unknown user")
+    
+    -- Get articles from in-memory store
+    local articles = self.instapaperManager:getArticles()
+    local last_sync = self.instapaperManager:getLastSyncTime()
+    
+    -- Build display data
+    local kv_pairs = {
+        { "Logged in as", (self.instapaperManager.username or "unknown user") }
+    }
+    
+    if last_sync then
+        local sync_time = os.date("%Y-%m-%d %H:%M:%S", last_sync)
+        kv_pairs[#kv_pairs + 1] = { "Last Sync", sync_time }
+    end
+    
+    if articles and #articles > 0 then        
+        for i = 1, #articles do
+            local article = articles[i]
+            local title = article.title or ""
+            local domain = article.domain or "unknown"
+            local description = article.description or ""
+            kv_pairs[#kv_pairs + 1] = { 
+                title .. " (" .. domain .. ")",
+                description,
+            }
+        end
+
+        kv_pairs[#kv_pairs + 1] = { "Articles", #articles .. " articles" }
+    else
+        kv_pairs[#kv_pairs + 1] = { "Articles", "No articles synced yet" }
+    end
 
     self.kv = KeyValuePage:new{
         title = _("Instapaper"),
@@ -160,14 +190,39 @@ function Instapaper:showArticles()
             })
         end,
         value_overflow_align = "right",
-        kv_pairs = {
-            { "Status", status_text }
-        },
+        kv_pairs = kv_pairs,
         callback_return = function()
             UIManager:close(self.kv)
         end,    
     }
+
     UIManager:show(self.kv)
+
+    self.kv.title_bar.right_button.icon = "appbar.settings"
+    self.kv.title_bar.right_button.callback = function()
+        -- Show loading message
+        local info = InfoMessage:new{ text = _("Syncing articles...") }
+        UIManager:show(info)
+        
+        -- Perform sync
+        local success = self.instapaperManager:syncReads()
+        
+        UIManager:close(info)
+        
+        if success then
+            UIManager:show(InfoMessage:new{ 
+                text = _("Sync completed successfully!"),
+                timeout = 2
+            })
+            -- Refresh the display
+            self:showArticles()
+        else
+            UIManager:show(ConfirmBox:new{
+                text = _("Sync failed. Please try again."),
+                ok_text = _("OK"),
+            })
+        end
+    end
 end
 
 return Instapaper

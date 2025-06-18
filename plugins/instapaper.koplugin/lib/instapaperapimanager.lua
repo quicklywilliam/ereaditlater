@@ -99,31 +99,25 @@ function InstapaperAPIManager:percentEncode(str)
 end
 
 function InstapaperAPIManager:generateSignatureBaseString(method, url, params)
-    -- Sort parameters in the exact order InstapaperAPIManager expects
-    local param_order = {
-        "oauth_callback",
-        "oauth_consumer_key",
-        "oauth_nonce",
-        "oauth_signature_method",
-        "oauth_timestamp",
-        "oauth_version",
-        "x_auth_mode",
-        "x_auth_password",
-        "x_auth_username"
-    }
+    -- Sort parameters alphabetically for all requests
+    local sorted_params = {}
+    for key, value in pairs(params) do
+        table.insert(sorted_params, {key = key, value = value})
+    end
     
-    -- Build parameter string in the correct order
+    table.sort(sorted_params, function(a, b) return a.key < b.key end)
+    
+    -- Build parameter string in alphabetical order
     local param_string = {}
-    for _, key in ipairs(param_order) do
-        if params[key] then
-            table.insert(param_string, self:percentEncode(key) .. "=" .. self:percentEncode(params[key]))
-        end
+    for _, param in ipairs(sorted_params) do
+        table.insert(param_string, self:percentEncode(param.key) .. "=" .. self:percentEncode(param.value))
     end
     
     -- Build signature base string
     local base_string = string.upper(method) .. "&" ..
            self:percentEncode(url) .. "&" ..
            self:percentEncode(table.concat(param_string, "&"))
+
     
     return base_string
 end
@@ -136,6 +130,7 @@ function InstapaperAPIManager:signRequest(method, url, params, consumer_secret, 
     local encoded_consumer = self:percentEncode(consumer_secret)
     local encoded_token = token_secret and self:percentEncode(token_secret) or ""
     local signing_key = encoded_consumer .. "&" .. encoded_token
+
     
     local sha2 = require("ffi/sha2")
     local hex_result = sha2.hmac(sha2.sha1, signing_key, base_string)
@@ -149,23 +144,24 @@ end
 
 function InstapaperAPIManager:buildAuthorizationHeader(params)
     local header_parts = {}
-    -- Use the same order as the signature base string calculation
-    local header_order = {
-        "oauth_callback",
-        "oauth_consumer_key",
-        "oauth_nonce",
-        "oauth_signature_method",
-        "oauth_timestamp",
-        "oauth_version",
-        "oauth_signature"
-    }
-    for _, key in ipairs(header_order) do
-        if params[key] then
-            table.insert(header_parts, key .. '="' .. self:percentEncode(params[key]) .. '"')
+    
+    -- Build header with all OAuth parameters in alphabetical order
+    local oauth_params = {}
+    for key, value in pairs(params) do
+        if key:match("^oauth_") then
+            table.insert(oauth_params, {key = key, value = value})
         end
     end
+    
+    -- Sort OAuth parameters alphabetically
+    table.sort(oauth_params, function(a, b) return a.key < b.key end)
+    
+    for _, param in ipairs(oauth_params) do
+        table.insert(header_parts, param.key .. '="' .. self:percentEncode(param.value) .. '"')
+    end
+    
     local header = "OAuth " .. table.concat(header_parts, ", ")
-
+    
     return header
 end
 
@@ -309,13 +305,20 @@ function InstapaperAPIManager:getArticles(oauth_token, oauth_token_secret)
     if success then
         -- Parse JSON response
         local JSON = require("json")
-        local success, articles = pcall(JSON.decode, body)
+        local success, output = pcall(JSON.decode, body)
         
-        if success and articles then
-            logger.dbg("instapaper: Successfully parsed", #articles, "articles")
+        if success and output then
+            local articles = {}
+            for _, item in ipairs(output) do
+                if item.type == "bookmark" then
+                    table.insert(articles, item)
+                else
+                    --meta and user objects… just ignore them for now
+                end
+            end
             return true, articles
         else
-            logger.err("instapaper: Failed to parse articles JSON")
+            logger.err("instapaper: Failed to parse output JSON")
             return false, nil
         end
     else
@@ -324,3 +327,5 @@ function InstapaperAPIManager:getArticles(oauth_token, oauth_token_secret)
 end
 
 return InstapaperAPIManager
+
+
