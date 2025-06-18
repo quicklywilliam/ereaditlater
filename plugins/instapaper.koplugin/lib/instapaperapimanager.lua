@@ -8,13 +8,67 @@ local ltn12 = require("ltn12")
 local socket = require("socket")
 local socketutil = require("socketutil")
 
-local InstapaperAuthenticator = {}
+local InstapaperAPIManager = {}
 
-function InstapaperAuthenticator:generateTimestamp()
+function InstapaperAPIManager:new()
+    local api_manager = {}
+
+    -- Load API keys
+    local consumer_key, consumer_secret = self:loadApiKeys()
+    if not consumer_key or not consumer_secret then
+        logger.err("instapaper: Failed to load API keys")
+
+        return nil
+    end
+    
+    api_manager.consumer_key = consumer_key
+    api_manager.consumer_secret = consumer_secret
+    api_manager.api_base = "https://www.instapaper.com"
+    api_manager.ACCESS_TOKEN_URL = api_manager.api_base .. "/api/1/oauth/access_token"
+    
+    setmetatable(api_manager, self)
+    self.__index = self
+    
+    return api_manager
+end
+
+-- Load API keys from file
+function InstapaperAPIManager:loadApiKeys()
+    local secrets_path = "plugins/instapaper.koplugin/secrets.txt"
+    local file = io.open(secrets_path, "r")
+    if not file then
+        logger.err("instapaper: Could not open secrets.txt")
+        return nil, nil, nil, nil
+    end
+    
+    local content = file:read("*all")
+    file:close()
+    
+    local consumer_key = ""
+    local consumer_secret = ""
+    
+    -- Parse the content looking for all keys
+    for key, value in string.gmatch(content, '"([^"]+)"%s*=%s*"([^"]+)"') do
+        if key == "instapaper_ouath_consumer_key" then
+            consumer_key = value
+        elseif key == "instapaper_oauth_consumer_secret" then
+            consumer_secret = value
+        end
+    end
+    
+    if consumer_key == "" or consumer_secret == "" then
+        logger.err("instapaper: Could not find both consumer_key and consumer_secret in secrets.txt")
+        return nil, nil
+    end
+    
+    return consumer_key, consumer_secret
+end
+
+function InstapaperAPIManager:generateTimestamp()
     return tostring(os.time())
 end
 
-function InstapaperAuthenticator:generateNonce()
+function InstapaperAPIManager:generateNonce()
     -- Generate a random 32-character alphanumeric string
     local nonce = {}
     for i = 1, 32 do
@@ -30,7 +84,7 @@ function InstapaperAuthenticator:generateNonce()
     return table.concat(nonce)
 end
 
-function InstapaperAuthenticator:percentEncode(str)
+function InstapaperAPIManager:percentEncode(str)
     if not str then return "" end
     
     -- Convert to string if not already
@@ -44,8 +98,8 @@ function InstapaperAuthenticator:percentEncode(str)
     return encoded
 end
 
-function InstapaperAuthenticator:generateSignatureBaseString(method, url, params)
-    -- Sort parameters in the exact order InstapaperAuthenticator expects
+function InstapaperAPIManager:generateSignatureBaseString(method, url, params)
+    -- Sort parameters in the exact order InstapaperAPIManager expects
     local param_order = {
         "oauth_callback",
         "oauth_consumer_key",
@@ -74,7 +128,7 @@ function InstapaperAuthenticator:generateSignatureBaseString(method, url, params
     return base_string
 end
 
-function InstapaperAuthenticator:signRequest(method, url, params, consumer_secret, token_secret)
+function InstapaperAPIManager:signRequest(method, url, params, consumer_secret, token_secret)
     -- Generate signature base string
     local base_string = self:generateSignatureBaseString(method, url, params)
     
@@ -93,21 +147,7 @@ function InstapaperAuthenticator:signRequest(method, url, params, consumer_secre
     return encoded
 end
 
-function InstapaperAuthenticator:new(consumer_key, consumer_secret)
-    local oauth = {}
-    
-    oauth.consumer_key = consumer_key
-    oauth.consumer_secret = consumer_secret
-    oauth.api_base = "https://www.instapaper.com"
-    oauth.ACCESS_TOKEN_URL = oauth.api_base .. "/api/1/oauth/access_token"
-    
-    setmetatable(oauth, self)
-    self.__index = self
-    
-    return oauth
-end
-
-function InstapaperAuthenticator:buildAuthorizationHeader(params)
+function InstapaperAPIManager:buildAuthorizationHeader(params)
     local header_parts = {}
     -- Use the same order as the signature base string calculation
     local header_order = {
@@ -129,7 +169,7 @@ function InstapaperAuthenticator:buildAuthorizationHeader(params)
     return header
 end
 
-function InstapaperAuthenticator:buildRequestBody(params)
+function InstapaperAPIManager:buildRequestBody(params)
     local body_parts = {}
     -- Use the same order as the signature calculation
     local body_order = {
@@ -145,7 +185,7 @@ function InstapaperAuthenticator:buildRequestBody(params)
     return table.concat(body_parts, "&")
 end
 
-function InstapaperAuthenticator:getAccessToken(username, password)
+function InstapaperAPIManager:getAccessToken(username, password)
     -- Generate OAuth parameters
     local params = {
         oauth_consumer_key = self.consumer_key,
@@ -177,7 +217,7 @@ function InstapaperAuthenticator:getAccessToken(username, password)
     return request
 end
 
-function InstapaperAuthenticator:authenticate(username, password)
+function InstapaperAPIManager:authenticate(username, password)
     logger.dbg("instapaperAuthenticator: Starting authentication for user:", username)
     
     -- Generate OAuth parameters
@@ -248,4 +288,4 @@ function InstapaperAuthenticator:authenticate(username, password)
     end
 end
 
-return InstapaperAuthenticator
+return InstapaperAPIManager

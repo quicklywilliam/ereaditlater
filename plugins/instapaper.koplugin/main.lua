@@ -1,7 +1,7 @@
 local _ = require("gettext")
 local UIManager = require("ui/uimanager")
 local InstapaperUIManager = require("frontend/ui/instapaper/manager")
-local InstapaperAPIManager = require("instapaperapimanager")
+local InstapaperManager = require("instapapermanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local logger = require("logger")
 local util = require("util")
@@ -40,7 +40,7 @@ end
 
 function Instapaper:init()
     self.uimanager = InstapaperUIManager:new()
-    self.instapaperAPIManager = InstapaperAPIManager:new()
+    self.instapaperManager = InstapaperManager:new()
     self.ui.menu:registerToMainMenu(self)    
 end
 
@@ -49,7 +49,7 @@ function Instapaper:addToMainMenu(menu_items)
         text = "Instapaper",
         callback = function()
             Trapper:wrap(function()
-                if self.instapaperAPIManager:isAuthenticated() then
+                if self.instapaperManager:isAuthenticated() then
                     self:showArticles() 
                 else
                     self:showLoginDialog()
@@ -117,7 +117,7 @@ function Instapaper:showLoginDialog()
                         UIManager:show(info)
                         
                         -- Perform authentication
-                        local success = self.instapaperAPIManager:authenticate(username, password)
+                        local success = self.instapaperManager:authenticate(username, password)
 
                         UIManager:close(info)
 
@@ -143,7 +143,7 @@ function Instapaper:showArticles()
         UIManager:close(self.kv)
     end
 
-    local status_text = "Authenticated as " .. (self.instapaperAPIManager.username or "unknown user")
+    local status_text = "Authenticated as " .. (self.instapaperManager.username or "unknown user")
 
     self.kv = KeyValuePage:new{
         title = _("Instapaper"),
@@ -154,7 +154,7 @@ function Instapaper:showArticles()
                 ok_text = _("Logout"),
                 cancel_text = _("Cancel"),
                 ok_callback = function()
-                    self.instapaperAPIManager:logout()
+                    self.instapaperManager:logout()
                     self:showLoginDialog()
                 end,
             })

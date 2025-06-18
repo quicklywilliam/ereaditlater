@@ -5,16 +5,18 @@ local NetworkMgr = require("ui/network/manager")
 local MultiInputDialog = require("ui/widget/multiinputdialog")
 local logger = require("logger")
 local KeyValuePage = require("ui/widget/keyvaluepage")
-local InstapaperAuthenticator = require("lib/instapaperAuthenticator")
+local InstapaperAPIManager = require("lib/instapaperapimanager")
 local DataStorage = require("datastorage")
 local LuaSettings = require("luasettings")
 
-local InstapaperAPIManager = {}
+local InstapaperManager = {}
 
-function InstapaperAPIManager:new()
+function InstapaperManager:new()
     local o = {}
     setmetatable(o, self)
     self.__index = self
+    
+    self.instapaper_api_manager = InstapaperAPIManager:new()
     
     -- Initialize with stored tokens and username
     o.token, o.token_secret = o:loadTokens()
@@ -39,13 +41,13 @@ local function getSettings()
 end
 
 -- Generic settings methods
-function InstapaperAPIManager:getSetting(key, default)
+function InstapaperManager:getSetting(key, default)
     local settings = getSettings()
     local data = settings.data.instapaper or {}
     return data[key] ~= nil and data[key] or default
 end
 
-function InstapaperAPIManager:setSetting(key, value)
+function InstapaperManager:setSetting(key, value)
     local settings = getSettings()
     local data = settings.data.instapaper or {}
     data[key] = value
@@ -53,7 +55,7 @@ function InstapaperAPIManager:setSetting(key, value)
     settings:flush()
 end
 
-function InstapaperAPIManager:delSetting(key)
+function InstapaperManager:delSetting(key)
     local settings = getSettings()
     local data = settings.data.instapaper or {}
     data[key] = nil
@@ -62,67 +64,35 @@ function InstapaperAPIManager:delSetting(key)
 end
 
 -- Token-specific methods (using the generic methods)
-function InstapaperAPIManager:loadTokens()
+function InstapaperManager:loadTokens()
     return self:getSetting("oauth_token"), self:getSetting("oauth_token_secret")
 end
 
-function InstapaperAPIManager:loadUsername()
+function InstapaperManager:loadUsername()
     return self:getSetting("username")
 end
 
-function InstapaperAPIManager:saveTokens(oauth_token, oauth_token_secret)
+function InstapaperManager:saveTokens(oauth_token, oauth_token_secret)
     self:setSetting("oauth_token", oauth_token)
     self:setSetting("oauth_token_secret", oauth_token_secret)
 end
 
-function InstapaperAPIManager:saveUsername(username)
+function InstapaperManager:saveUsername(username)
     self:setSetting("username", username)
 end
 
-function InstapaperAPIManager:clearTokens()
+function InstapaperManager:clearTokens()
     self:delSetting("oauth_token")
     self:delSetting("oauth_token_secret")
     self:delSetting("username")
 end
 
--- Load API keys from file
-local function loadApiKeys()
-    local secrets_path = "plugins/instapaper.koplugin/secrets.txt"
-    local file = io.open(secrets_path, "r")
-    if not file then
-        logger.err("instapaper: Could not open secrets.txt")
-        return nil, nil, nil, nil
-    end
-    
-    local content = file:read("*all")
-    file:close()
-    
-    local consumer_key = ""
-    local consumer_secret = ""
-    
-    -- Parse the content looking for all keys
-    for key, value in string.gmatch(content, '"([^"]+)"%s*=%s*"([^"]+)"') do
-        if key == "instapaper_ouath_consumer_key" then
-            consumer_key = value
-        elseif key == "instapaper_oauth_consumer_secret" then
-            consumer_secret = value
-        end
-    end
-    
-    if consumer_key == "" or consumer_secret == "" then
-        logger.err("instapaper: Could not find both consumer_key and consumer_secret in secrets.txt")
-        return nil, nil
-    end
-    
-    return consumer_key, consumer_secret
-end
-
-function InstapaperAPIManager:isAuthenticated()
+function InstapaperManager:isAuthenticated()
     local oauth_token, oauth_token_secret = self:loadTokens()
     return oauth_token ~= nil and oauth_token_secret ~= nil
 end
 
-function InstapaperAPIManager:logout()
+function InstapaperManager:logout()
     self:clearTokens()
     self.token = nil
     self.token_secret = nil
@@ -131,7 +101,7 @@ function InstapaperAPIManager:logout()
     logger.dbg("instapaper: Logged out and cleared tokens")
 end
 
-function InstapaperAPIManager:authenticate(username, password)
+function InstapaperManager:authenticate(username, password)
     if not username or not password then
         logger.err("instapaper: Username and password required for authentication")
         return false
@@ -139,18 +109,9 @@ function InstapaperAPIManager:authenticate(username, password)
     
     self.username = username
     
-    -- Load API keys
-    local consumer_key, consumer_secret = loadApiKeys()
-    if not consumer_key or not consumer_secret then
-        logger.err("instapaper: Failed to load API keys")
-
-        return false
-    end
-    
     logger.dbg("instapaper: Starting OAuth xAuth authentication for user:", username)
     
-    local instapaper = InstapaperAuthenticator:new(consumer_key, consumer_secret)
-    local success, params = instapaper:authenticate(username, password)
+    local success, params = self.instapaper_api_manager:authenticate(username, password)
     
     if success and params then
         logger.dbg("instapaper: Authentication successful")
@@ -170,4 +131,4 @@ function InstapaperAPIManager:authenticate(username, password)
     end
 end
 
-return InstapaperAPIManager
+return InstapaperManager
