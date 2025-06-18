@@ -9,9 +9,9 @@ local InstapaperAuthenticator = require("lib/instapaperAuthenticator")
 local DataStorage = require("datastorage")
 local LuaSettings = require("luasettings")
 
-local InstapaperManager = {}
+local InstapaperAPIManager = {}
 
-function InstapaperManager:new()
+function InstapaperAPIManager:new()
     local o = {}
     setmetatable(o, self)
     self.__index = self
@@ -39,13 +39,13 @@ local function getSettings()
 end
 
 -- Generic settings methods
-function InstapaperManager:getSetting(key, default)
+function InstapaperAPIManager:getSetting(key, default)
     local settings = getSettings()
     local data = settings.data.instapaper or {}
     return data[key] ~= nil and data[key] or default
 end
 
-function InstapaperManager:setSetting(key, value)
+function InstapaperAPIManager:setSetting(key, value)
     local settings = getSettings()
     local data = settings.data.instapaper or {}
     data[key] = value
@@ -53,7 +53,7 @@ function InstapaperManager:setSetting(key, value)
     settings:flush()
 end
 
-function InstapaperManager:delSetting(key)
+function InstapaperAPIManager:delSetting(key)
     local settings = getSettings()
     local data = settings.data.instapaper or {}
     data[key] = nil
@@ -62,24 +62,24 @@ function InstapaperManager:delSetting(key)
 end
 
 -- Token-specific methods (using the generic methods)
-function InstapaperManager:loadTokens()
+function InstapaperAPIManager:loadTokens()
     return self:getSetting("oauth_token"), self:getSetting("oauth_token_secret")
 end
 
-function InstapaperManager:loadUsername()
+function InstapaperAPIManager:loadUsername()
     return self:getSetting("username")
 end
 
-function InstapaperManager:saveTokens(oauth_token, oauth_token_secret)
+function InstapaperAPIManager:saveTokens(oauth_token, oauth_token_secret)
     self:setSetting("oauth_token", oauth_token)
     self:setSetting("oauth_token_secret", oauth_token_secret)
 end
 
-function InstapaperManager:saveUsername(username)
+function InstapaperAPIManager:saveUsername(username)
     self:setSetting("username", username)
 end
 
-function InstapaperManager:clearTokens()
+function InstapaperAPIManager:clearTokens()
     self:delSetting("oauth_token")
     self:delSetting("oauth_token_secret")
     self:delSetting("username")
@@ -117,12 +117,12 @@ local function loadApiKeys()
     return consumer_key, consumer_secret
 end
 
-function InstapaperManager:isAuthenticated()
+function InstapaperAPIManager:isAuthenticated()
     local oauth_token, oauth_token_secret = self:loadTokens()
     return oauth_token ~= nil and oauth_token_secret ~= nil
 end
 
-function InstapaperManager:logout()
+function InstapaperAPIManager:logout()
     self:clearTokens()
     self.token = nil
     self.token_secret = nil
@@ -131,7 +131,7 @@ function InstapaperManager:logout()
     logger.dbg("instapaper: Logged out and cleared tokens")
 end
 
-function InstapaperManager:authenticate(username, password)
+function InstapaperAPIManager:authenticate(username, password)
     if not username or not password then
         logger.err("instapaper: Username and password required for authentication")
         return false
@@ -170,4 +170,4 @@ function InstapaperManager:authenticate(username, password)
     end
 end
 
-return InstapaperManager
+return InstapaperAPIManager
