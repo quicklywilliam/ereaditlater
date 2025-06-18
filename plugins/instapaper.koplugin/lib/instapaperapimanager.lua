@@ -185,70 +185,53 @@ function InstapaperAPIManager:buildRequestBody(params)
     return table.concat(body_parts, "&")
 end
 
-function InstapaperAPIManager:getAccessToken(username, password)
-    -- Generate OAuth parameters
-    local params = {
-        oauth_consumer_key = self.consumer_key,
-        oauth_nonce = self:generateNonce(),
-        oauth_signature_method = "HMAC-SHA1",
-        oauth_timestamp = tostring(os.time()),
-        oauth_version = "1.0",
-        oauth_callback = "oob",
-        x_auth_mode = "client_auth",
-        x_auth_username = username,
-        x_auth_password = password
-    }
-    
+-- Generic OAuth request builder
+function InstapaperAPIManager:buildOAuthRequest(method, url, params, token_secret)
     -- Generate signature
-    local signature = self:signRequest("POST", self.ACCESS_TOKEN_URL, params, self.consumer_secret)
+    local signature = self:signRequest(method, url, params, self.consumer_secret, token_secret)
     params.oauth_signature = signature
     
     -- Build request
     local request = {
-        url = self.ACCESS_TOKEN_URL,
-        method = "POST",
+        url = url,
+        method = method,
         headers = {
-            ["Content-Type"] = "application/x-www-form-urlencoded",
             ["Authorization"] = self:buildAuthorizationHeader(params)
-        },
-        body = self:buildRequestBody(params)
+        }
     }
+    
+    -- Add body for POST requests
+    if method == "POST" then
+        request.headers["Content-Type"] = "application/x-www-form-urlencoded"
+        request.body = self:buildRequestBody(params)
+    end
     
     return request
 end
 
-function InstapaperAPIManager:authenticate(username, password)
-    logger.dbg("instapaperAuthenticator: Starting authentication for user:", username)
-    
-    -- Generate OAuth parameters
+-- Generate common OAuth parameters
+function InstapaperAPIManager:generateOAuthParams(additional_params)
     local params = {
         oauth_consumer_key = self.consumer_key,
         oauth_nonce = self:generateNonce(),
         oauth_signature_method = "HMAC-SHA1",
         oauth_timestamp = tostring(os.time()),
-        oauth_version = "1.0",
-        oauth_callback = "oob",
-        x_auth_mode = "client_auth",
-        x_auth_username = username,
-        x_auth_password = password
+        oauth_version = "1.0"
     }
     
-    -- Generate signature
-    local signature = self:signRequest("POST", self.ACCESS_TOKEN_URL, params, self.consumer_secret)
-    params.oauth_signature = signature
+    -- Add any additional parameters
+    if additional_params then
+        for key, value in pairs(additional_params) do
+            params[key] = value
+        end
+    end
     
-    -- Build request
-    local request = {
-        url = self.ACCESS_TOKEN_URL,
-        method = "POST",
-        headers = {
-            ["Content-Type"] = "application/x-www-form-urlencoded",
-            ["Authorization"] = self:buildAuthorizationHeader(params)
-        },
-        body = self:buildRequestBody(params)
-    }
-    
-    logger.dbg("instapaperAuthenticator: Making authentication request to:", request.url)
+    return params
+end
+
+-- Generic HTTP request executor
+function InstapaperAPIManager:executeRequest(request)
+    logger.dbg("instapaper: Making request to:", request.url)
     
     -- Make the request
     local sink = {}
@@ -264,8 +247,33 @@ function InstapaperAPIManager:authenticate(username, password)
     local code, headers, status = socket.skip(1, http.request(http_request))
     socketutil:reset_timeout()
     
+    local body = table.concat(sink)
+    
     if code == 200 then
-        local body = table.concat(sink)
+        logger.dbg("instapaper: Request successful, response length:", #body)
+        return true, body
+    else
+        logger.err("instapaper: Request failed with code:", code, "response:", body)
+        return false, body
+    end
+end
+
+function InstapaperAPIManager:authenticate(username, password)
+    logger.dbg("instapaperAuthenticator: Starting authentication for user:", username)
+    
+    -- Generate OAuth parameters with auth-specific additions
+    local params = self:generateOAuthParams({
+        oauth_callback = "oob",
+        x_auth_mode = "client_auth",
+        x_auth_username = username,
+        x_auth_password = password
+    })
+    
+    -- Build and execute request
+    local request = self:buildOAuthRequest("POST", self.ACCESS_TOKEN_URL, params)
+    local success, body = self:executeRequest(request)
+    
+    if success then
         logger.dbg("instapaperAuthenticator: Authentication successful, response:", body)
         
         -- Parse the response which contains the access token and secret
@@ -282,8 +290,35 @@ function InstapaperAPIManager:authenticate(username, password)
             return false, nil
         end
     else
-        local body = table.concat(sink)
-        logger.err("instapaperAuthenticator: Authentication failed with code:", code, "response:", body)
+        return false, nil
+    end
+end
+
+function InstapaperAPIManager:getArticles(oauth_token, oauth_token_secret)
+    logger.dbg("instapaper: Fetching articles...")
+    
+    -- Generate OAuth parameters with API-specific additions
+    local params = self:generateOAuthParams({
+        oauth_token = oauth_token
+    })
+    
+    -- Build and execute request
+    local request = self:buildOAuthRequest("GET", self.api_base .. "/api/1/bookmarks/list", params, oauth_token_secret)
+    local success, body = self:executeRequest(request)
+    
+    if success then
+        -- Parse JSON response
+        local JSON = require("json")
+        local success, articles = pcall(JSON.decode, body)
+        
+        if success and articles then
+            logger.dbg("instapaper: Successfully parsed", #articles, "articles")
+            return true, articles
+        else
+            logger.err("instapaper: Failed to parse articles JSON")
+            return false, nil
+        end
+    else
         return false, nil
     end
 end
