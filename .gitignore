@@ -41,4 +41,4 @@ i18n
 /.project
 .gitignore~
 
-api_keys.txt
+secrets.txt

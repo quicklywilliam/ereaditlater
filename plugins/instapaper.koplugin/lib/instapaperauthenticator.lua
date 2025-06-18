@@ -2,14 +2,19 @@ local _ = require("gettext")
 local lfs = require("libs/libkoreader-lfs")
 local NetworkMgr = require("ui/network/manager")
 local sha2 = require("ffi/sha2")
+local logger = require("logger")
+local http = require("socket.http")
+local ltn12 = require("ltn12")
+local socket = require("socket")
+local socketutil = require("socketutil")
 
-local Instapaper = {}
+local InstapaperAuthenticator = {}
 
-function Instapaper:generateTimestamp()
+function InstapaperAuthenticator:generateTimestamp()
     return tostring(os.time())
 end
 
-function Instapaper:generateNonce()
+function InstapaperAuthenticator:generateNonce()
     -- Generate a random 32-character alphanumeric string
     local nonce = {}
     for i = 1, 32 do
@@ -25,7 +30,7 @@ function Instapaper:generateNonce()
     return table.concat(nonce)
 end
 
-function Instapaper:percentEncode(str)
+function InstapaperAuthenticator:percentEncode(str)
     if not str then return "" end
     
     -- Convert to string if not already
@@ -39,8 +44,8 @@ function Instapaper:percentEncode(str)
     return encoded
 end
 
-function Instapaper:generateSignatureBaseString(method, url, params)
-    -- Sort parameters in the exact order Instapaper expects
+function InstapaperAuthenticator:generateSignatureBaseString(method, url, params)
+    -- Sort parameters in the exact order InstapaperAuthenticator expects
     local param_order = {
         "oauth_callback",
         "oauth_consumer_key",
@@ -69,7 +74,7 @@ function Instapaper:generateSignatureBaseString(method, url, params)
     return base_string
 end
 
-function Instapaper:signRequest(method, url, params, consumer_secret, token_secret)
+function InstapaperAuthenticator:signRequest(method, url, params, consumer_secret, token_secret)
     -- Generate signature base string
     local base_string = self:generateSignatureBaseString(method, url, params)
     
@@ -88,7 +93,7 @@ function Instapaper:signRequest(method, url, params, consumer_secret, token_secr
     return encoded
 end
 
-function Instapaper:new(consumer_key, consumer_secret)
+function InstapaperAuthenticator:new(consumer_key, consumer_secret)
     local oauth = {}
     
     oauth.consumer_key = consumer_key
@@ -102,7 +107,7 @@ function Instapaper:new(consumer_key, consumer_secret)
     return oauth
 end
 
-function Instapaper:buildAuthorizationHeader(params)
+function InstapaperAuthenticator:buildAuthorizationHeader(params)
     local header_parts = {}
     -- Use the same order as the signature base string calculation
     local header_order = {
@@ -124,7 +129,7 @@ function Instapaper:buildAuthorizationHeader(params)
     return header
 end
 
-function Instapaper:buildRequestBody(params)
+function InstapaperAuthenticator:buildRequestBody(params)
     local body_parts = {}
     -- Use the same order as the signature calculation
     local body_order = {
@@ -140,7 +145,7 @@ function Instapaper:buildRequestBody(params)
     return table.concat(body_parts, "&")
 end
 
-function Instapaper:getAccessToken(username, password)
+function InstapaperAuthenticator:getAccessToken(username, password)
     -- Generate OAuth parameters
     local params = {
         oauth_consumer_key = self.consumer_key,
@@ -172,4 +177,75 @@ function Instapaper:getAccessToken(username, password)
     return request
 end
 
-return Instapaper
+function InstapaperAuthenticator:authenticate(username, password)
+    logger.dbg("instapaperAuthenticator: Starting authentication for user:", username)
+    
+    -- Generate OAuth parameters
+    local params = {
+        oauth_consumer_key = self.consumer_key,
+        oauth_nonce = self:generateNonce(),
+        oauth_signature_method = "HMAC-SHA1",
+        oauth_timestamp = tostring(os.time()),
+        oauth_version = "1.0",
+        oauth_callback = "oob",
+        x_auth_mode = "client_auth",
+        x_auth_username = username,
+        x_auth_password = password
+    }
+    
+    -- Generate signature
+    local signature = self:signRequest("POST", self.ACCESS_TOKEN_URL, params, self.consumer_secret)
+    params.oauth_signature = signature
+    
+    -- Build request
+    local request = {
+        url = self.ACCESS_TOKEN_URL,
+        method = "POST",
+        headers = {
+            ["Content-Type"] = "application/x-www-form-urlencoded",
+            ["Authorization"] = self:buildAuthorizationHeader(params)
+        },
+        body = self:buildRequestBody(params)
+    }
+    
+    logger.dbg("instapaperAuthenticator: Making authentication request to:", request.url)
+    
+    -- Make the request
+    local sink = {}
+    socketutil:set_timeout(10, 30)
+    local http_request = {
+        url = request.url,
+        method = request.method,
+        headers = request.headers,
+        sink = ltn12.sink.table(sink),
+        source = request.body and ltn12.source.string(request.body) or nil
+    }
+    
+    local code, headers, status = socket.skip(1, http.request(http_request))
+    socketutil:reset_timeout()
+    
+    if code == 200 then
+        local body = table.concat(sink)
+        logger.dbg("instapaperAuthenticator: Authentication successful, response:", body)
+        
+        -- Parse the response which contains the access token and secret
+        local response_params = {}
+        for k, v in string.gmatch(body, "([^&=]+)=([^&=]+)") do
+            response_params[k] = v
+        end
+        
+        if response_params.oauth_token and response_params.oauth_token_secret then
+            logger.dbg("instapaperAuthenticator: Successfully parsed OAuth tokens")
+            return true, response_params
+        else
+            logger.err("instapaperAuthenticator: Missing OAuth tokens in response")
+            return false, nil
+        end
+    else
+        local body = table.concat(sink)
+        logger.err("instapaperAuthenticator: Authentication failed with code:", code, "response:", body)
+        return false, nil
+    end
+end
+
+return InstapaperAuthenticator
