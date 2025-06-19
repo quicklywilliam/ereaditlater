@@ -143,10 +143,11 @@ function Instapaper:showArticles()
         UIManager:close(self.kv)
     end
 
-    
-    -- Get articles from in-memory store
+    -- Get articles from database store
     local articles = self.instapaperManager:getArticles()
     local last_sync = self.instapaperManager:getLastSyncTime()
+    
+    logger.dbg("instapaper: Got", #articles, "articles from database")
     
     -- Build display data
     local kv_pairs = {
@@ -154,19 +155,29 @@ function Instapaper:showArticles()
     }
     
     if last_sync then
-        local sync_time = os.date("%Y-%m-%d %H:%M:%S", last_sync)
+        local sync_time = os.date("%Y-%m-%d %H:%M:%S", tonumber(last_sync))
         kv_pairs[#kv_pairs + 1] = { "Last Sync", sync_time }
     end
     
     if articles and #articles > 0 then        
         for i = 1, #articles do
             local article = articles[i]
-            local title = article.title or ""
-            local domain = article.domain or "unknown"
-            local description = article.description or ""
+            local title = article.title or "Untitled"
+            -- Extract domain from URL
+            local domain = "unknown"
+            if article.url and article.url ~= "" then
+                local domain_match = article.url:match("://([^/]+)")
+                if domain_match then
+                    domain = domain_match
+                end
+            end
+            local description = domain or "No URL"
             kv_pairs[#kv_pairs + 1] = { 
-                title .. " (" .. domain .. ")",
+                title,
                 description,
+                callback = function()
+                    self:showArticleContent(article)
+                end
             }
         end
 
@@ -197,7 +208,7 @@ function Instapaper:showArticles()
     }
 
     UIManager:show(self.kv)
-
+    
     self.kv.title_bar.right_button.icon = "appbar.settings"
     self.kv.title_bar.right_button.callback = function()
         -- Show loading message
@@ -223,6 +234,39 @@ function Instapaper:showArticles()
             })
         end
     end
+end
+
+function Instapaper:showArticleContent(article)
+    -- Show loading message
+    local info = InfoMessage:new{ text = _("Loading article...") }
+    UIManager:show(info)
+    
+    -- Download and get article content
+    local success, result = self.instapaperManager:downloadArticle(article.bookmark_id)
+    
+    UIManager:close(info)
+    
+    if not success then
+        UIManager:show(ConfirmBox:new{
+            text = _("Failed to load article: ") .. (result or _("Unknown error")),
+            ok_text = _("OK"),
+        })
+        return
+    end
+    
+    -- Get the file path from storage
+    local file_path = self.instapaperManager.storage:getArticleFilePath(article.bookmark_id)
+    if not file_path then
+        UIManager:show(ConfirmBox:new{
+            text = _("Article file not found"),
+            ok_text = _("OK"),
+        })
+        return
+    end
+    
+    -- Open the stored HTML file directly in KOReader
+    local ReaderUI = require("apps/reader/readerui")
+    ReaderUI:showReader(file_path)
 end
 
 return Instapaper

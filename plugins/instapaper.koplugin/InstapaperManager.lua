@@ -6,6 +6,7 @@ local MultiInputDialog = require("ui/widget/multiinputdialog")
 local logger = require("logger")
 local KeyValuePage = require("ui/widget/keyvaluepage")
 local InstapaperAPIManager = require("lib/instapaperapimanager")
+local Storage = require("lib/storage")
 local DataStorage = require("datastorage")
 local LuaSettings = require("luasettings")
 
@@ -23,15 +24,14 @@ function InstapaperManager:new()
     o.username = o:loadUsername()
     o.is_authenticated = o:isAuthenticated()
     
-    -- In-memory data store for articles
-    o.articles = {}
-    o.last_sync_time = nil
-    
     if o.is_authenticated then
-        logger.dbg("instapaper: Loaded stored tokens, authenticated as", o.username or "unknown user")
+        logger.dbg("instapaper: Loaded stored tokens")
     else
         logger.dbg("instapaper: No stored tokens found, not authenticated")
     end
+
+    self.storage = Storage:new()
+    self.storage:init()
     
     return o
 end
@@ -102,9 +102,8 @@ function InstapaperManager:logout()
     self.token_secret = nil
     self.is_authenticated = false
     self.username = nil
-    -- Clear in-memory data store
-    self.articles = {}
-    self.last_sync_time = nil
+    -- Clear database storage
+    self.storage:clearAll()
     logger.dbg("instapaper: Logged out and cleared tokens")
 end
 
@@ -149,9 +148,11 @@ function InstapaperManager:syncReads()
     local success, articles = self.instapaper_api_manager:getArticles(self.token, self.token_secret)
     
     if success and articles then
-        self.articles = articles
-        self.last_sync_time = os.time()
-        logger.dbg("instapaper: Successfully synced", #articles, "articles")
+        -- Store articles in database
+        for _, article in ipairs(articles) do
+            self.storage:storeArticleMetadata(article)
+        end
+        logger.dbg("instapaper: Successfully synced", #articles, "articles to database")
         return true
     else
         logger.err("instapaper: Failed to sync reads")
@@ -160,11 +161,55 @@ function InstapaperManager:syncReads()
 end
 
 function InstapaperManager:getArticles()
-    return self.articles
+    return self.storage:getArticles()
 end
 
 function InstapaperManager:getLastSyncTime()
-    return self.last_sync_time
+    return self.storage:getLastSyncTime()
+end
+
+function InstapaperManager:downloadArticle(bookmark_id)
+    if not self:isAuthenticated() then
+        logger.err("instapaper: Cannot download article - not authenticated")
+        return false, "Not authenticated"
+    end
+    
+    -- Check if we already have this article
+    local existing = self.storage:getArticle(bookmark_id)
+    if existing and existing.html then
+        logger.dbg("instapaper: Article already downloaded:", bookmark_id)
+        return true, existing
+    end
+    
+    -- Find the article metadata from our database store
+    local article_meta = self.storage:getArticle(bookmark_id)
+    
+    if not article_meta then
+        logger.err("instapaper: Article not found in database:", bookmark_id)
+        return false, "Article not found"
+    end
+    
+    -- Download article text from API
+    logger.dbg("instapaper: Downloading article text for:", bookmark_id)
+    local success, html_content = self.instapaper_api_manager:getArticleText(bookmark_id, self.token, self.token_secret)
+    
+    if not success or not html_content then
+        logger.err("instapaper: Failed to download article text:", bookmark_id)
+        return false, "Failed to download article"
+    end
+    
+    -- Store the article
+    local store_success, filename = self.storage:storeArticle(article_meta, html_content)
+    if not store_success then
+        logger.err("instapaper: Failed to store article:", bookmark_id)
+        return false, "Failed to store article"
+    end
+    
+    logger.dbg("instapaper: Successfully downloaded and stored article:", bookmark_id)
+    
+    -- Return the stored article
+    local stored_article = self.storage:getArticle(bookmark_id)
+    return true, stored_article
 end
 
 return InstapaperManager
