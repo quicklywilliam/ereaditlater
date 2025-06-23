@@ -162,7 +162,13 @@ function Instapaper:showArticles()
     if articles and #articles > 0 then        
         for i = 1, #articles do
             local article = articles[i]
-            local title = article.title or "Untitled"
+            logger.dbg("instapaper: file size:", article.html_size)
+
+            local isDownloaded = ""
+            if article.html_size and article.html_size > 0 then
+                 isDownloaded = "⬇️ "
+            end
+            local title = (isDownloaded .. article.title) or "Untitled"
             -- Extract domain from URL
             local domain = "unknown"
             if article.url and article.url ~= "" then
