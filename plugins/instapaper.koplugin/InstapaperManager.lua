@@ -168,6 +168,189 @@ function InstapaperManager:getLastSyncTime()
     return self.storage:getLastSyncTime()
 end
 
+function InstapaperManager:processHtmlImages(html_content, bookmark_id)
+    -- Count how many external images we need to process
+    local external_images = {}
+    html_content:gsub('<img([^>]+)>', function(img_attrs)
+        local src = img_attrs:match('src="([^"]+)"')
+        if src and (src:sub(1, 7) == "http://" or src:sub(1, 8) == "https://") then
+            table.insert(external_images, src)
+        end
+    end)
+    
+    if #external_images == 0 then
+        return html_content
+    end
+    
+    logger.dbg("instapaper: Processing", #external_images, "images")
+    
+    -- Show notification to user
+    local UIManager = require("ui/uimanager")
+    local InfoMessage = require("ui/widget/infomessage")
+    local processing_msg = InfoMessage:new{
+        text = string.format(_("Processing %d images..."), #external_images),
+        timeout = 0.0, -- No timeout, will be dismissed manually
+    }
+    UIManager:show(processing_msg)
+    
+    -- Function to download an image and convert to data URI
+    local function downloadImageToDataUri(url)
+        local http = require("socket.http")
+        local ltn12 = require("ltn12")
+        local socketutil = require("socketutil")
+        local mime = require("mime")
+        local socket = require("socket")
+        
+        -- Check network connectivity first
+        if not NetworkMgr:isOnline() then
+            logger.warn("instapaper: No network connectivity available")
+            return nil
+        end
+        
+        logger.dbg("instapaper: Attempting to download image:", url)
+        
+        local response_body = {}
+        socketutil:set_timeout(10, 30) -- 10s timeout, 30s total
+        
+        local request = {
+            url = url,
+            method = "GET",
+            sink = ltn12.sink.table(response_body),
+            headers = {
+                ["User-Agent"] = "KOReader/1.0"
+            }
+        }
+        
+        local code, headers, status = socket.skip(1, http.request(request))
+        socketutil:reset_timeout()
+        
+        -- Check for timeout or SSL errors
+        if code == socketutil.TIMEOUT_CODE or
+           code == socketutil.SSL_HANDSHAKE_CODE or
+           code == socketutil.SINK_TIMEOUT_CODE then
+            logger.warn("instapaper: Request interrupted:", status or code)
+            return nil
+        end
+        
+        -- Check for HTTP errors
+        if code >= 400 and code < 500 then
+            logger.warn("instapaper: HTTP error:", status or code)
+            return nil
+        end
+        
+        -- Check for network errors
+        if headers == nil then
+            logger.warn("instapaper: No HTTP headers:", status or code or "network unreachable")
+            return nil
+        end
+        
+        if code ~= 200 then
+            logger.warn("instapaper: Failed to download image:", url, "HTTP code:", code)
+            return nil
+        end
+        
+        local image_data = table.concat(response_body)
+        if #image_data == 0 then
+            logger.warn("instapaper: Empty image data for:", url)
+            return nil
+        end
+        
+        -- Check if image is too large (base64 increases size by ~33%)
+        -- Limit to 1MB to avoid memory issues
+        if #image_data > 1024 * 1024 then
+            logger.warn("instapaper: Image too large for data URI:", url, "size:", #image_data)
+            return nil
+        end
+        
+        -- Validate that we actually got image data
+        local content_type = headers and headers["content-type"]
+        if content_type and not content_type:match("^image/") then
+            logger.warn("instapaper: Content-Type is not an image:", content_type, "for URL:", url)
+            return nil
+        end
+        
+        -- Determine MIME type from headers or URL
+        local mime_type = "image/jpeg" -- default
+        
+        if content_type then
+            mime_type = content_type:match("^([^;]+)")
+        else
+            -- Try to guess from URL extension
+            local ext = url:match("%.([^%.?]+)")
+            if ext then
+                ext = ext:lower()
+                if ext == "png" then mime_type = "image/png"
+                elseif ext == "gif" then mime_type = "image/gif"
+                elseif ext == "webp" then mime_type = "image/webp"
+                elseif ext == "svg" then mime_type = "image/svg+xml"
+                end
+            end
+        end
+        
+        -- Convert to base64 data URI
+        local base64_data = mime.b64(image_data)
+        return string.format("data:%s;base64,%s", mime_type, base64_data)
+    end
+    
+    -- Function to try downloading with fallback to HTTP
+    local function downloadImageWithFallback(url)
+        local data_uri = downloadImageToDataUri(url)
+        if data_uri then
+            return data_uri
+        end
+        
+        -- If HTTPS failed, try HTTP as fallback
+        if url:sub(1, 8) == "https://" then
+            local http_url = "http://" .. url:sub(9)
+            return downloadImageToDataUri(http_url)
+        end
+        
+        return nil
+    end
+    
+    -- Process img tags with external URLs
+    local processed_html = html_content:gsub('<img([^>]+)>', function(img_attrs)
+        -- Extract src attribute from the img tag
+        local src = img_attrs:match('src="([^"]+)"')
+        if not src then
+            -- No src attribute found, return unchanged
+            return string.format('<img%s>', img_attrs)
+        end
+        
+        -- Skip if already a data URI or relative path
+        if src:sub(1, 5) == "data:" or src:sub(1, 1) == "/" or src:sub(1, 1) == "." then
+            return string.format('<img%s>', img_attrs)
+        end
+        
+        -- Only process HTTP/HTTPS URLs
+        if src:sub(1, 7) == "http://" or src:sub(1, 8) == "https://" then
+            local data_uri = downloadImageWithFallback(src)
+            if data_uri then
+                -- Replace the src attribute with the data URI
+                local new_attrs = img_attrs:gsub('src="([^"]+)"', string.format('src="%s"', data_uri))
+                return string.format('<img%s>', new_attrs)
+            else
+                logger.warn("instapaper: Failed to convert image, removing img tag:", src)
+                return "" -- Remove the img tag if download fails
+            end
+        end
+        
+        -- Return unchanged for other cases
+        return string.format('<img%s>', img_attrs)
+    end)
+    
+    -- Dismiss the processing notification
+    UIManager:close(processing_msg)
+    
+    -- Show success notification
+    UIManager:show(InfoMessage:new{
+        text = string.format(_("Successfully downloaded %d images"), #external_images),
+        timeout = 2.0,
+    })
+    
+    return processed_html
+end
+
 function InstapaperManager:downloadArticle(bookmark_id)
     if not self:isAuthenticated() then
         logger.err("instapaper: Cannot download article - not authenticated")
@@ -176,9 +359,18 @@ function InstapaperManager:downloadArticle(bookmark_id)
     
     -- Check if we already have this article
     local existing = self.storage:getArticle(bookmark_id)
-    if existing and existing.html then
-        logger.dbg("instapaper: Article already downloaded:", bookmark_id)
-        return true, existing
+    if existing then
+        -- Load the HTML content from file
+        local html_content = self.storage:getArticleHTML(existing.html_filename)
+        
+        if html_content and #html_content > 0 then
+            -- Add HTML content to the existing article data
+            existing.html = html_content
+            logger.dbg("instapaper: Article already downloaded:", bookmark_id)
+            return true, existing
+        else
+            logger.dbg("instapaper: Article exists but has no HTML content, will download")
+        end
     end
     
     -- Find the article metadata from our database store
@@ -196,6 +388,16 @@ function InstapaperManager:downloadArticle(bookmark_id)
     if not success or not html_content then
         logger.err("instapaper: Failed to download article text:", bookmark_id)
         return false, "Failed to download article"
+    end
+    
+    -- Check if HTML already contains data URIs (images already processed)
+    local has_data_uris = html_content:find("data:image/")
+    if has_data_uris then
+        logger.dbg("instapaper: HTML already contains data URIs, skipping image processing")
+    else
+        -- Process images in the HTML content
+        logger.dbg("instapaper: Processing images in HTML content")
+        html_content = self:processHtmlImages(html_content, bookmark_id)
     end
     
     -- Store the article
