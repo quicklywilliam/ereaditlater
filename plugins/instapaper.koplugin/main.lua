@@ -190,15 +190,30 @@ function Instapaper:showArticles()
         title = _("Instapaper"),
         title_bar_left_icon = "appbar.menu",
         title_bar_left_icon_tap_callback = function()
-            UIManager:show(ConfirmBox:new{
-                text = _("Logout of Instapaper?"),
-                ok_text = _("Logout"),
-                cancel_text = _("Cancel"),
-                ok_callback = function()
-                    self.instapaperManager:logout()
-                    self:showLoginDialog()
-                end,
-            })
+            local Menu = require("ui/widget/menu")
+            local Screen = require("device").screen
+            local menu_container = Menu:new{
+                title = _("Instapaper Settings"),
+                width = Screen:getWidth() * 0.8,
+                height = Screen:getHeight() * 0.8,
+                item_table = {
+                    {
+                        text = _("Log out"),
+                        callback = function()
+                            UIManager:show(ConfirmBox:new{
+                                text = _("Logout of Instapaper?"),
+                                ok_text = _("Logout"),
+                                cancel_text = _("Cancel"),
+                                ok_callback = function()
+                                    self.instapaperManager:logout()
+                                    self:showLoginDialog()
+                                end,
+                            })
+                        end,
+                    },
+                },
+            }
+            UIManager:show(menu_container)
         end,
         value_overflow_align = "right",
         kv_pairs = kv_pairs,
