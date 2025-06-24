@@ -185,15 +185,6 @@ function InstapaperManager:processHtmlImages(html_content, bookmark_id)
     
     logger.dbg("instapaper: Processing", #external_images, "images")
     
-    -- Show notification to user
-    local UIManager = require("ui/uimanager")
-    local InfoMessage = require("ui/widget/infomessage")
-    local processing_msg = InfoMessage:new{
-        text = string.format(_("Processing %d images..."), #external_images),
-        timeout = 0.0, -- No timeout, will be dismissed manually
-    }
-    UIManager:show(processing_msg)
-    
     -- Function to download an image and convert to data URI
     local function downloadImageToDataUri(url)
         local http = require("socket.http")
@@ -339,15 +330,6 @@ function InstapaperManager:processHtmlImages(html_content, bookmark_id)
         -- Return unchanged for other cases
         return string.format('<img%s>', img_attrs)
     end)
-    
-    -- Dismiss the processing notification
-    UIManager:close(processing_msg)
-    
-    -- Show success notification
-    UIManager:show(InfoMessage:new{
-        text = string.format(_("Successfully downloaded %d images"), #external_images),
-        timeout = 2.0,
-    })
     
     return processed_html
 end

@@ -257,35 +257,32 @@ end
 
 function Instapaper:showArticleContent(article)
     -- Show loading message
-    local info = InfoMessage:new{ text = _("Loading article...") }
+    local info = InfoMessage:new{ text = _("Downloading article...") }
     UIManager:show(info)
-    
-    -- Download and get article content
-    local success, result = self.instapaperManager:downloadArticle(article.bookmark_id)
-    
-    UIManager:close(info)
-    
-    if not success then
-        UIManager:show(ConfirmBox:new{
-            text = _("Failed to load article: ") .. (result or _("Unknown error")),
-            ok_text = _("OK"),
-        })
-        return
-    end
-    
-    -- Get the file path from storage
-    local file_path = self.instapaperManager.storage:getArticleFilePath(article.bookmark_id)
-    if not file_path then
-        UIManager:show(ConfirmBox:new{
-            text = _("Article file not found"),
-            ok_text = _("OK"),
-        })
-        return
-    end
-    
-    -- Open the stored HTML file directly in KOReader
-    local ReaderUI = require("apps/reader/readerui")
-    ReaderUI:showReader(file_path)
+    UIManager:nextTick(function()
+        -- Download and get article content
+        local success, result = self.instapaperManager:downloadArticle(article.bookmark_id)
+        UIManager:close(info)
+        if not success then
+            UIManager:show(ConfirmBox:new{
+                text = _("Failed to load article: ") .. (result or _("Unknown error")),
+                ok_text = _("OK"),
+            })
+            return
+        end
+        -- Get the file path from storage
+        local file_path = self.instapaperManager.storage:getArticleFilePath(article.bookmark_id)
+        if not file_path then
+            UIManager:show(ConfirmBox:new{
+                text = _("Article file not found"),
+                ok_text = _("OK"),
+            })
+            return
+        end
+        -- Open the stored HTML file directly in KOReader
+        local ReaderUI = require("apps/reader/readerui")
+        ReaderUI:showReader(file_path)
+    end)
 end
 
 return Instapaper
