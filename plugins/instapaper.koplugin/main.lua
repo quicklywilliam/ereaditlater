@@ -282,6 +282,9 @@ function Instapaper:showArticleContent(article)
         -- Open the stored HTML file directly in KOReader
         local ReaderUI = require("apps/reader/readerui")
         ReaderUI:showReader(file_path)
+
+        -- update the article list to show the downloaded article
+        self:showArticles()
     end)
 end
 
