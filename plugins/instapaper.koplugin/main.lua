@@ -196,20 +196,50 @@ function ArticleItem:init()
         }
     end
     
+    -- Thumbnail widget
+    local thumbnail_size = Screen:scaleBySize(60)
+    local thumbnail_path = self.instapaperManager:getArticleThumbnail(self.article.bookmark_id)
+    local thumbnail_widget
+    
+    if thumbnail_path then
+        -- Create image widget with actual thumbnail
+        thumbnail_widget = ImageWidget:new{
+            file = thumbnail_path,
+            width = thumbnail_size,
+            height = thumbnail_size,
+            scale_factor = 0, -- Scale to fit
+        }
+    else
+        -- Create placeholder with grey background
+        thumbnail_widget = FrameContainer:new{
+            background = Blitbuffer.COLOR_GRAY,
+            bordersize = 0,
+            width = thumbnail_size,
+            height = thumbnail_size,
+            CenterContainer:new{
+                dimen = Geom:new{ w = thumbnail_size, h = thumbnail_size },
+                TextWidget:new{
+                    text = "📄",
+                    face = Font:getFace("infont", 24),
+                },
+            },
+        }
+    end
+    
     -- Title widget
     local title_widget = TextWidget:new{
         text = title_text,
         face = Font:getFace("x_smalltfont", 16),
-        max_width = self.width - Screen:scaleBySize(40), -- Leave space for download icon
-        width = self.width - Screen:scaleBySize(40),
+        max_width = self.width - thumbnail_size - Screen:scaleBySize(60), -- Leave space for thumbnail and download icon
+        width = self.width - thumbnail_size - Screen:scaleBySize(60),
     }
     
     -- Domain widget
     local domain_widget = TextWidget:new{
         text = domain,
         face = Font:getFace("infont", 14),
-        max_width = self.width - Screen:scaleBySize(40), -- Leave space for download icon
-        width = self.width - Screen:scaleBySize(40),
+        max_width = self.width - thumbnail_size - Screen:scaleBySize(60), -- Leave space for thumbnail and download icon
+        width = self.width - thumbnail_size - Screen:scaleBySize(60),
     }
     
     -- Layout: title and domain stacked vertically
@@ -220,12 +250,17 @@ function ArticleItem:init()
         domain_widget,
     }
     
-    -- Main content with download icon on the right
+    -- Main content with thumbnail on the left and download icon on the right
     local content_group
     if download_icon then
         content_group = OverlapGroup:new {
             dimen = self.dimen:copy(),
-            text_group,
+            HorizontalGroup:new{
+                align = "top",
+                thumbnail_widget,
+                HorizontalSpan:new{ width = Screen:scaleBySize(10) },
+                text_group,
+            },
             RightContainer:new{
                 align = "center",
                 dimen = Geom:new{ w = self.width - Screen:scaleBySize(20), h = self.height },
@@ -233,7 +268,12 @@ function ArticleItem:init()
             },
         }
     else
-        content_group = text_group
+        content_group = HorizontalGroup:new{
+            align = "top",
+            thumbnail_widget,
+            HorizontalSpan:new{ width = Screen:scaleBySize(10) },
+            text_group,
+        }
     end
     
     -- Container with background and padding
