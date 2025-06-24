@@ -350,7 +350,7 @@ function Storage:getArticles()
     self:openDB()
     
     local stmt = self.db_conn:prepare([[
-        SELECT * FROM articles ORDER BY time_added DESC
+        SELECT * FROM articles WHERE is_archived = 0 ORDER BY time_added DESC
     ]])
     
     local articles = {}

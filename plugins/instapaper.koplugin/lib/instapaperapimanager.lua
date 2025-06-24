@@ -340,7 +340,6 @@ function InstapaperAPIManager:archiveArticle(bookmark_id, oauth_token, oauth_tok
     local success, body = self:executeRequest(request)
     
     if success then
-        logger.dbg("instapaper: Archive response", body)
         return true
     else
         return false
