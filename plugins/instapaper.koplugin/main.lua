@@ -14,10 +14,29 @@ local UI = require("ui/trapper")
 local Screen = require("device").screen
 local DocSettings = require("docsettings")
 local Device = require("device")
+local ListView = require("ui/widget/listview")
+local ImageWidget = require("ui/widget/imagewidget")
+local HorizontalGroup = require("ui/widget/horizontalgroup")
+local VerticalGroup = require("ui/widget/verticalgroup")
+local LeftContainer = require("ui/widget/container/leftcontainer")
+local RightContainer = require("ui/widget/container/rightcontainer")
+local CenterContainer = require("ui/widget/container/centercontainer")
+local FrameContainer = require("ui/widget/container/framecontainer")
+local HorizontalSpan = require("ui/widget/horizontalspan")
+local VerticalSpan = require("ui/widget/verticalspan")
+local Font = require("ui/font")
+local InputContainer = require("ui/widget/container/inputcontainer")
+local TextWidget = require("ui/widget/textwidget")
+local GestureRange = require("ui/gesturerange")
+local IconButton = require("ui/widget/iconbutton")
+local Blitbuffer = require("ffi/blitbuffer")
+local Size = require("ui/size")
+local Geom = require("ui/geometry")
+local TitleBar = require("ui/widget/titlebar")
 
 local Instapaper = WidgetContainer:extend{
     name = "instapaper",
-    kv = nil, -- KeyValuePage
+    list_view = nil, -- KeyValuePage
 }
 
 -- DEVELOPMENT ONLY: Load stored credentials from api_keys.txt for testing convenience
@@ -72,14 +91,14 @@ function Instapaper:showLoginDialog()
     -- DEVELOPMENT ONLY: Pre-fill credentials for testing
     local stored_username, stored_password = loadDevCredentials()
 
-    self.kv = KeyValuePage:new{
+    self.list_view = KeyValuePage:new{
         title = _("Instapaper"),
         value_overflow_align = "right",
         callback_return = function()
-            UIManager:close(self.kv)
+            UIManager:close(self.list_view)
         end,    
     }
-    UIManager:show(self.kv)
+    UIManager:show(self.list_view)
     
     self.login_dialog = MultiInputDialog:new{
         title = _("Instapaper Login"),
@@ -148,9 +167,104 @@ function Instapaper:showLoginDialog()
     self.login_dialog:onShowKeyboard()
 end
 
+-- Create a custom article item widget
+local ArticleItem = InputContainer:extend{
+    name = "article_item",
+    article = nil,
+    width = nil,
+    height = nil,
+    background = nil,
+    callback = nil,
+}
+
+function ArticleItem:init()
+    self.dimen = Geom:new{x = 0, y = 0, w = self.width, h = self.height}
+    
+    -- Create article content
+    local title_text = self.article.title or "Untitled"
+    local domain = self.instapaperManager.getDomain(self.article.url) or "No URL"
+    
+    -- Download status indicator
+    local download_icon = nil
+    if self.article.html_size and self.article.html_size > 0 then
+        download_icon = TextWidget:new{
+            text = "⬇️",
+            face = Font:getFace("infont", 20),
+        }
+    end
+    
+    -- Title widget
+    local title_widget = TextWidget:new{
+        text = title_text,
+        face = Font:getFace("cfont", 18),
+        font_weight = "bold",
+        max_width = self.width - Screen:scaleBySize(40), -- Leave space for padding
+    }
+    
+    -- Domain widget
+    local domain_widget = TextWidget:new{
+        text = domain,
+        face = Font:getFace("infont", 14),
+        max_width = self.width - Screen:scaleBySize(40),
+    }
+    
+    -- Layout: title and domain stacked vertically
+    local text_group = VerticalGroup:new{
+        align = "left",
+        title_widget,
+        width = self.width - Screen:scaleBySize(40), -- Leave space for download icon
+        VerticalSpan:new{ width = Screen:scaleBySize(4) },
+        domain_widget,
+    }
+    
+    -- Main content with download icon on the right
+    local content_group
+    if download_icon then
+        content_group = HorizontalGroup:new{
+            align = "center",
+            text_group,
+            download_icon,
+        }
+    else
+        content_group = text_group
+    end
+    
+    -- Container with background and padding
+    self[1] = FrameContainer:new{
+        background = self.background or Blitbuffer.COLOR_WHITE,
+        bordersize = 0,
+        width = self.width,
+        height = self.height,
+        content_group,
+    }
+    
+    -- Register touch events - only handle taps, not swipes
+    if Device:isTouchDevice() then
+        self.ges_events.TapSelect = {
+            GestureRange:new{
+                ges = "tap",
+                range = self.dimen,
+            }
+        }
+        -- Don't register swipe events to avoid blocking ListView swipes
+    end
+end
+
+function ArticleItem:onTapSelect(arg, ges_ev)
+    if self.callback then
+        self.callback()
+    end
+    return true
+end
+
+-- Don't handle swipe events - let them pass through to ListView
+function ArticleItem:onSwipe(arg, ges_ev)
+    return false -- Let the event bubble up to parent
+end
+
 function Instapaper:showArticles()
-    if self.kv then
-        UIManager:close(self.kv)
+    if self.list_view then
+        UIManager:close(self.list_view)
     end
 
     -- Get articles from database store
@@ -158,120 +272,113 @@ function Instapaper:showArticles()
     
     logger.dbg("instapaper: Got", #articles, "articles from database")
     
-    -- Build display data
-    local kv_pairs = {}
-        
-    if articles and #articles > 0 then        
+    -- Create article item widgets
+    local items = {}
+    local item_height = Screen:scaleBySize(80) -- Fixed height for all items
+    local width = Screen:getWidth()
+    
+    if articles and #articles > 0 then
         for i = 1, #articles do
             local article = articles[i]
-
-            local isDownloaded = ""
-            if article.html_size and article.html_size > 0 then
-                 isDownloaded = "⬇️ "
-            end
-            local title = (isDownloaded .. article.title) or "Untitled"
-            -- Extract domain from URL
-            local domain = self.instapaperManager.getDomain(article.url)
-            local description = domain or "No URL"
-            kv_pairs[#kv_pairs + 1] = { 
-                title,
-                description,
+            local background = (i % 2 == 0) and Blitbuffer.COLOR_GRAY_E or Blitbuffer.COLOR_WHITE
+            
+            local item = ArticleItem:new{
+                width = width,
+                height = item_height,
+                background = background,
+                article = article,
+                instapaperManager = self.instapaperManager,
                 callback = function()
                     self:showArticleContent(article)
-                end
+                end,
             }
+            table.insert(items, item)
         end
-
-        kv_pairs[#kv_pairs + 1] = { "Articles", #articles .. " articles" }
     else
-        kv_pairs[#kv_pairs + 1] = { "Articles", "No articles synced yet" }
-    end
-
-    self.kv = KeyValuePage:new{
-        title = _("Instapaper"),
-        title_bar_left_icon = "appbar.menu",
-        title_bar_left_icon_tap_callback = function()
-            local last_sync = self.instapaperManager:getLastSyncTime()
-            local sync_string = "Never"
-            if last_sync then
-                local sync_time = os.date("%Y-%m-%d %H:%M:%S", tonumber(last_sync))
-                sync_string = ("Last Sync: " .. sync_time)
-            end
-            local Menu = require("ui/widget/menu")
-            local menu_container = Menu:new{
-                title = _("Settings"),
-                width = Screen:getWidth() * 0.8,
-                height = Screen:getHeight() * 0.8,
-                item_table = {
-                    {
-                        text = sync_string,
-                    },
-                    {
-                        text = _("Sync"),
-                        callback = function()
-                            local info = InfoMessage:new{ text = _("Syncing articles...") }
-                            UIManager:show(info)
-                            
-                            -- Perform sync
-                            local success = self.instapaperManager:syncReads()
-                            
-                            UIManager:close(info)
-                            
-                            if success then
-                                UIManager:show(InfoMessage:new{ 
-                                    text = _("Sync completed successfully!"),
-                                    timeout = 2
-                                })
-                                -- Refresh the display
-                                self:showArticles()
-                            else
-                                UIManager:show(ConfirmBox:new{
-                                    text = _("Sync failed. Please try again."),
-                                    ok_text = _("OK"),
-                                })
-                            end
-                        end,
-                    },
-                    {   
-                        text = _("Logged in as " .. self.instapaperManager.username or "unknown user"),
-                    },
-                    {
-                        text = _("Log out"),
-                        callback = function()
-                            UIManager:show(ConfirmBox:new{
-                                text = _("Logout of Instapaper?"),
-                                ok_text = _("Logout"),
-                                cancel_text = _("Cancel"),
-                                ok_callback = function()
-                                    self.instapaperManager:logout()
-                                    self:showLoginDialog()
-                                end,
-                            })
-                        end,
-                    },
+        -- Show "no articles" message
+        local no_articles_item = FrameContainer:new{
+            background = Blitbuffer.COLOR_WHITE,
+            bordersize = 0,
+            padding = Screen:scaleBySize(20),
+            CenterContainer:new{
+                dimen = Geom:new{ w = width, h = item_height },
+                TextWidget:new{
+                    text = _("No articles synced yet"),
+                    face = Font:getFace("cfont"),
                 },
-            }
-            UIManager:show(menu_container)
+            },
+        }
+        table.insert(items, no_articles_item)
+    end
+    
+    -- Create header with title and menu button
+    local header_height = Screen:scaleBySize(50)
+    local header = TitleBar:new{
+        width = width,
+        align = "left",
+        title = _("Instapaper"),
+        subtitle = #articles .. " articles",
+        subtitle_face = Font:getFace("xx_smallinfofont", 14),
+        title_top_padding = Screen:scaleBySize(4),
+        title_bottom_padding = Screen:scaleBySize(4),
+        title_subtitle_v_padding = Screen:scaleBySize(0),
+        button_padding = Screen:scaleBySize(10),
+        left_icon_size_ratio = 1,
+        left_icon = "appbar.menu",
+        left_icon_tap_callback = function()
+            self:showMenu()
         end,
-        value_overflow_align = "right",
-        kv_pairs = kv_pairs,
-        callback_return = function()
-            UIManager:close(self.kv)
-        end,    
+        show_parent = self,
     }
-
-    -- Forward key events from KeyValuePage to Instapaper for dev shortcuts
-    self.kv.onKeyPress = function(widget, key, mods, is_repeat)
+    local header_height = header:getHeight()
+    
+    -- Create ListView
+    local list_height = Screen:getHeight() - header_height
+    local list_view = ListView:new{
+        width = width,
+        height = list_height,
+        items = items,
+        padding = 0,
+        page_update_cb = function(curr_page, total_pages)
+            -- Trigger screen refresh when page changes
+            UIManager:setDirty(self.list_view, function()
+                return "ui", self.list_view.dimen
+            end)
+        end,
+    }
+    
+    -- Create main container
+    self.list_view = FrameContainer:new{
+        background = Blitbuffer.COLOR_WHITE,
+        bordersize = Size.border.window,
+        padding = 0,
+        width = width,
+        VerticalGroup:new{
+            align = "left",
+            header,
+            list_view,
+        },
+    }
+    
+    -- Forward key events for dev shortcuts and page navigation
+    self.list_view.onKeyPress = function(widget, key, mods, is_repeat)
+        -- Handle page navigation
+        if key.key == "Left" or key.key == "Up" then
+            list_view:prevPage()
+            return true
+        elseif key.key == "Right" or key.key == "Down" then
+            list_view:nextPage()
+            return true
+        end
+        
+        -- Handle dev shortcuts
         if self.onKeyPress then
             return self:onKeyPress(key, mods, is_repeat)
         end
         return false
     end
-
     
-    
-    self.kv.onSetRotationMode = function(widget, mode)
-        logger.dbg("Instapaper: onSetRotationMode", mode)
+    self.list_view.onSetRotationMode = function(widget, mode)
         Screen:setRotationMode(mode)
         UIManager:nextTick(function()
             self:showArticles()
@@ -279,7 +386,72 @@ function Instapaper:showArticles()
         return true
     end
 
-    UIManager:show(self.kv)
+
+    UIManager:show(self.list_view)
+end
+
+function Instapaper:showMenu()
+    local last_sync = self.instapaperManager:getLastSyncTime()
+    local sync_string = "Never"
+    if last_sync then
+        local sync_time = os.date("%Y-%m-%d %H:%M:%S", tonumber(last_sync))
+        sync_string = ("Last Sync: " .. sync_time)
+    end
+    local Menu = require("ui/widget/menu")
+    local menu_container = Menu:new{
+        title = _("Settings"),
+        width = Screen:getWidth() * 0.8,
+        height = Screen:getHeight() * 0.8,
+        item_table = {
+            {
+                text = sync_string,
+            },
+            {
+                text = _("Sync"),
+                callback = function()
+                    local info = InfoMessage:new{ text = _("Syncing articles...") }
+                    UIManager:show(info)
+                    
+                    -- Perform sync
+                    local success = self.instapaperManager:syncReads()
+                    
+                    UIManager:close(info)
+                    
+                    if success then
+                        UIManager:show(InfoMessage:new{ 
+                            text = _("Sync completed successfully!"),
+                            timeout = 2
+                        })
+                        -- Refresh the display
+                        self:showArticles()
+                    else
+                        UIManager:show(ConfirmBox:new{
+                            text = _("Sync failed. Please try again."),
+                            ok_text = _("OK"),
+                        })
+                    end
+                end,
+            },
+            {   
+                text = _("Logged in as " .. self.instapaperManager.username or "unknown user"),
+            },
+            {
+                text = _("Log out"),
+                callback = function()
+                    UIManager:show(ConfirmBox:new{
+                        text = _("Logout of Instapaper?"),
+                        ok_text = _("Logout"),
+                        cancel_text = _("Cancel"),
+                        ok_callback = function()
+                            self.instapaperManager:logout()
+                            self:showLoginDialog()
+                        end,
+                    })
+                end,
+            },
+        },
+    }
+    UIManager:show(menu_container)
 end
 
 function Instapaper:showArticleContent(article)
@@ -346,7 +518,7 @@ function Instapaper:onKeyPress(key, mods, is_repeat)
         logger.dbg("Instapaper: onKeyPress F4")
         local current = Screen:getRotationMode()
         local new_mode = (current + 1) % 4
-        self.kv.onSetRotationMode(self.kv, new_mode)
+        self.list_view.onSetRotationMode(self.list_view, new_mode)
         return true
     end
     return false
