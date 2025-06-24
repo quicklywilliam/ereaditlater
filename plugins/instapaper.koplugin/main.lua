@@ -11,6 +11,7 @@ local ConfirmBox = require("ui/widget/confirmbox")
 local InfoMessage = require("ui/widget/infomessage")
 local KeyValuePage = require("ui/widget/keyvaluepage")
 local UI = require("ui/trapper")
+local Screen = require("device").screen
 
 local Instapaper = WidgetContainer:extend{
     name = "instapaper",
@@ -189,7 +190,6 @@ function Instapaper:showArticles()
                 sync_string = ("Last Sync: " .. sync_time)
             end
             local Menu = require("ui/widget/menu")
-            local Screen = require("device").screen
             local menu_container = Menu:new{
                 title = _("Settings"),
                 width = Screen:getWidth() * 0.8,
@@ -252,6 +252,14 @@ function Instapaper:showArticles()
         end,    
     }
 
+    -- Forward key events from KeyValuePage to Instapaper for dev shortcuts
+    self.kv.onKeyPress = function(widget, key, mods, is_repeat)
+        if self.onKeyPress then
+            return self:onKeyPress(key, mods, is_repeat)
+        end
+        return false
+    end
+  
     UIManager:show(self.kv)
 end
 
@@ -287,6 +295,7 @@ function Instapaper:showArticleContent(article)
         local ReaderUI = require("apps/reader/readerui")
         ReaderUI:showReader(file_path)
 
+
         -- Register our Instapaper module after ReaderUI is created
         UIManager:scheduleIn(0.1, function()
             if ReaderUI.instance then
@@ -305,6 +314,21 @@ function Instapaper:showArticleContent(article)
         -- update the article list to show the downloaded article
         self:showArticles()
     end)
+end
+
+function Instapaper:onKeyPress(key, mods, is_repeat)
+    -- Development feature: F4 rotates the device 90º
+    if key.key == "F4" then
+        UIManager:close(self.kv)
+        UIManager:nextTick(function()
+            local current = Screen:getRotationMode()
+            local new_mode = (current + 1) % 4
+            Screen:setRotationMode(new_mode)
+            self:showArticles()
+        end)
+        return true
+    end
+    return false
 end
 
 return Instapaper
