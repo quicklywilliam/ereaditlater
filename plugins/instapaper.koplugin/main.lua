@@ -34,6 +34,7 @@ local Size = require("ui/size")
 local Geom = require("ui/geometry")
 local TitleBar = require("ui/widget/titlebar")
 local OverlapGroup = require("ui/widget/overlapgroup")
+local Button = require("ui/widget/button")
 
 local Instapaper = WidgetContainer:extend{
     name = "instapaper",
@@ -187,10 +188,11 @@ function ArticleItem:init()
     
     -- Download status indicator
     local download_icon = nil
-    if self.article.html_size and self.article.html_size > 0 then
+    local is_downloaded = self.article.html_size and self.article.html_size > 0
+    if is_downloaded then
         download_icon = TextWidget:new{
             alignment = "left",
-            text = "⬇️",
+            text = "⇩",
             face = Font:getFace("infont", 20),
             max_width = Screen:scaleBySize(20),
         }
@@ -209,26 +211,32 @@ function ArticleItem:init()
             height = thumbnail_size,
             scale_factor = nil, -- Scale to fit
         }
-    else
+    elseif is_downloaded then
         -- Create placeholder with grey background
-        thumbnail_widget = FrameContainer:new{
-            background = Blitbuffer.COLOR_GRAY,
-            bordersize = 0,
+        thumbnail_widget = Button:new{
+            icon = "notice-question",
+            bordersize = 3,
+            border_color = Blitbuffer.COLOR_DARK_GRAY,
+            background = Blitbuffer.COLOR_WHITE,
             width = thumbnail_size,
             height = thumbnail_size,
-            CenterContainer:new{
-                dimen = Geom:new{ w = thumbnail_size, h = thumbnail_size },
-                TextWidget:new{
-                    text = "📄",
-                    face = Font:getFace("infont", 24),
-                },
-            },
         }
+    else
+        -- Creat an empty placeholder with grey background
+        thumbnail_widget = Button:new{
+            text = "",
+            bordersize = 3,
+            border_color = Blitbuffer.COLOR_DARK_GRAY,
+            background = Blitbuffer.COLOR_GRAY_E,
+            width = thumbnail_size,
+            height = thumbnail_size,
+        } 
     end
     
     -- Title widget
     local title_widget = TextWidget:new{
         text = title_text,
+        fgcolor = is_downloaded and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY,
         face = Font:getFace("x_smalltfont", 16),
         max_width = self.width - thumbnail_size - Screen:scaleBySize(60), -- Leave space for thumbnail and download icon
         width = self.width - thumbnail_size - Screen:scaleBySize(60),
@@ -237,6 +245,7 @@ function ArticleItem:init()
     -- Domain widget
     local domain_widget = TextWidget:new{
         text = domain,
+        fgcolor = is_downloaded and Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_BLACK,
         face = Font:getFace("infont", 14),
         max_width = self.width - thumbnail_size - Screen:scaleBySize(60), -- Leave space for thumbnail and download icon
         width = self.width - thumbnail_size - Screen:scaleBySize(60),
@@ -505,7 +514,8 @@ function Instapaper:showArticleContent(article)
     -- Show loading message
     local info = InfoMessage:new{ text = _("Downloading article...") }
     UIManager:show(info)
-    UIManager:nextTick(function()
+    
+    UIManager:scheduleIn(0.1, function()
         -- Download and get article content
         local success, result = self.instapaperManager:downloadArticle(article.bookmark_id)
         UIManager:close(info)
