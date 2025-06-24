@@ -44,7 +44,9 @@ end
 function Instapaper:init()
     self.uimanager = InstapaperUIManager:new()
     self.instapaperManager = InstapaperManager:new()
-    self.ui.menu:registerToMainMenu(self)    
+    if self.ui and self.ui.menu then
+        self.ui.menu:registerToMainMenu(self)    
+    end
 end
 
 function Instapaper:addToMainMenu(menu_items)
@@ -52,14 +54,18 @@ function Instapaper:addToMainMenu(menu_items)
         text = "Instapaper",
         callback = function()
             Trapper:wrap(function()
-                if self.instapaperManager:isAuthenticated() then
-                    self:showArticles() 
-                else
-                    self:showLoginDialog()
-                end
+                self:showUI()
             end)
         end,
     }
+end
+
+function Instapaper:showUI() 
+    if self.instapaperManager:isAuthenticated() then
+        self:showArticles() 
+    else
+        self:showLoginDialog()
+    end
 end
 
 function Instapaper:showLoginDialog()
