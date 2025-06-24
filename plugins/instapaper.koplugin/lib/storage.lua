@@ -163,10 +163,9 @@ end
 -- Store an article's HTML content and metadata
 function Storage:storeArticle(article_data, html_content)
     self:openDB()
-    
     local filename = self:generateFilename(article_data.bookmark_id)
     local filepath = self.articles_dir .. "/" .. filename
-    
+
     -- Write HTML file
     local file = io.open(filepath, "w")
     if not file then
@@ -174,51 +173,103 @@ function Storage:storeArticle(article_data, html_content)
         self:closeDB()
         return false, "Failed to create HTML file"
     end
-    
     file:write(html_content)
     file:close()
-    
     local file_size = lfs.attributes(filepath, "size") or 0
-    
-    -- Insert or update article metadata in database
-    local stmt = self.db_conn:prepare([[
-        INSERT OR REPLACE INTO articles (
-            bookmark_id, title, url, html_filename, html_size,
-            starred, is_archived, time_added, time_updated, time_synced,
-            sync_status, word_count, reading_time
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ]])
-    
-    local current_time = os.time()
-    local ok, err = pcall(function()
-        stmt:reset():bind(
-            article_data.bookmark_id,
-            article_data.title,
-            article_data.url,
-            filename,
-            file_size,
-            article_data.starred and 1 or 0,
-            article_data.type == "archive" and 1 or 0,
-            article_data.time or current_time,
-            article_data.time_updated or current_time,
-            current_time,
-            "synced",
-            article_data.word_count or 0,
-            article_data.reading_time or 0
-        ):step()
-    end)
-    
-    if not ok then
-        logger.err("Instapaper: Failed to store article metadata:", err)
-        -- Clean up the HTML file if database insert failed
-        os.remove(filepath)
+
+    -- Check if article exists
+    local existing = self:getArticle(article_data.bookmark_id)
+    self:openDB() -- re-open after getArticle
+
+    if existing then
+        -- Get schema fields from the database
+        local schema_fields = {}
+        do
+            local stmt = self.db_conn:prepare("PRAGMA table_info(articles)")
+            local row = stmt:step()
+            while row do
+                schema_fields[row[2]] = true
+                row = stmt:step()
+            end
+        end
+
+        -- Build dynamic UPDATE statement
+        local fields, values = {}, {}
+        for k, v in pairs(article_data) do
+            if k ~= "bookmark_id" and schema_fields[k] then
+                local t = type(v)
+                if t == "boolean" then
+                    v = v and 1 or 0
+                elseif t ~= "string" and t ~= "number" then
+                    logger.err("Instapaper: Skipping field " .. k .. " of unsupported type: " .. t)
+                    goto continue
+                end
+                table.insert(fields, k .. " = ?")
+                table.insert(values, v)
+                ::continue::
+            end
+        end
+        -- Always update html_filename and html_size
+        table.insert(fields, "html_filename = ?")
+        table.insert(values, filename)
+        table.insert(fields, "html_size = ?")
+        table.insert(values, file_size)
+        -- Always update time_updated
+        table.insert(fields, "time_updated = ?")
+        table.insert(values, os.time())
+
+        local sql = "UPDATE articles SET " .. table.concat(fields, ", ") .. " WHERE bookmark_id = ?"
+        table.insert(values, article_data.bookmark_id)
+
+        local stmt = self.db_conn:prepare(sql)
+        local ok, err = pcall(function()
+            stmt:reset():bind(table.unpack(values)):step()
+        end)
+        if not ok then
+            logger.err("Instapaper: Failed to update article metadata:", err)
+            self:closeDB()
+            return false, "Failed to update article metadata: " .. tostring(err)
+        end
         self:closeDB()
-        return false, "Failed to store article metadata: " .. tostring(err)
+        logger.dbg("Instapaper: Updated article:", article_data.title, "as", filename)
+        return true, filename
+    else
+        -- Insert new article (full set of fields)
+        local current_time = os.time()
+        local stmt = self.db_conn:prepare([[
+            INSERT INTO articles (
+                bookmark_id, title, url, html_filename, html_size,
+                starred, is_archived, time_added, time_updated, time_synced,
+                sync_status, word_count, reading_time
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ]])
+        local ok, err = pcall(function()
+            stmt:reset():bind(
+                article_data.bookmark_id,
+                article_data.title,
+                article_data.url,
+                filename,
+                file_size,
+                article_data.starred and 1 or 0,
+                article_data.type == "archive" and 1 or 0,
+                article_data.time or current_time,
+                article_data.time_updated or current_time,
+                current_time,
+                "synced",
+                article_data.word_count or 0,
+                article_data.reading_time or 0
+            ):step()
+        end)
+        if not ok then
+            logger.err("Instapaper: Failed to store article metadata:", err)
+            os.remove(filepath)
+            self:closeDB()
+            return false, "Failed to store article metadata: " .. tostring(err)
+        end
+        self:closeDB()
+        logger.dbg("Instapaper: Stored article:", article_data.title, "as", filename)
+        return true, filename
     end
-    
-    self:closeDB()
-    logger.dbg("Instapaper: Stored article:", article_data.title, "as", filename)
-    return true, filename
 end
 
 -- Store article metadata only (without HTML content)
