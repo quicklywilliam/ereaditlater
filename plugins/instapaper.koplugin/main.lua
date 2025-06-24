@@ -13,6 +13,7 @@ local KeyValuePage = require("ui/widget/keyvaluepage")
 local UI = require("ui/trapper")
 local Screen = require("device").screen
 local DocSettings = require("docsettings")
+local Device = require("device")
 
 local Instapaper = WidgetContainer:extend{
     name = "instapaper",
@@ -260,7 +261,18 @@ function Instapaper:showArticles()
         end
         return false
     end
-  
+
+    
+    
+    self.kv.onSetRotationMode = function(widget, mode)
+        logger.dbg("Instapaper: onSetRotationMode", mode)
+        Screen:setRotationMode(mode)
+        UIManager:nextTick(function()
+            self:showArticles()
+        end)
+        return true
+    end
+
     UIManager:show(self.kv)
 end
 
@@ -323,15 +335,12 @@ function Instapaper:showArticleContent(article)
 end
 
 function Instapaper:onKeyPress(key, mods, is_repeat)
-    -- Development feature: F4 rotates the device 90º
-    if key.key == "F4" then
-        UIManager:close(self.kv)
-        UIManager:nextTick(function()
-            local current = Screen:getRotationMode()
-            local new_mode = (current + 1) % 4
-            Screen:setRotationMode(new_mode)
-            self:showArticles()
-        end)
+
+    if Device:isEmulator() and (key.key == "F4") then
+        logger.dbg("Instapaper: onKeyPress F4")
+        local current = Screen:getRotationMode()
+        local new_mode = (current + 1) % 4
+        self.kv.onSetRotationMode(self.kv, new_mode)
         return true
     end
     return false
