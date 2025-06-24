@@ -12,6 +12,7 @@ local InfoMessage = require("ui/widget/infomessage")
 local KeyValuePage = require("ui/widget/keyvaluepage")
 local UI = require("ui/trapper")
 local Screen = require("device").screen
+local DocSettings = require("docsettings")
 
 local Instapaper = WidgetContainer:extend{
     name = "instapaper",
@@ -293,6 +294,11 @@ function Instapaper:showArticleContent(article)
         
         -- Open the stored HTML file directly in KOReader
         local ReaderUI = require("apps/reader/readerui")
+        local doc_settings = DocSettings:open(file_path)
+        local current_rotation = Screen:getRotationMode()
+        doc_settings:saveSetting("kopt_rotation_mode", current_rotation)
+        doc_settings:saveSetting("copt_rotation_mode", current_rotation)
+        doc_settings:flush()
         ReaderUI:showReader(file_path)
 
 
