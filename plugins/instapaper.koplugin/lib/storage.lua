@@ -8,7 +8,7 @@ local util = require("util")
 local Storage = {}
 
 -- Database schema version
-local DB_SCHEMA_VERSION = 1
+local DB_SCHEMA_VERSION = 3
 
 -- Database schema for Instapaper articles
 local INSTAPAPER_DB_SCHEMA = [[
@@ -21,7 +21,7 @@ local INSTAPAPER_DB_SCHEMA = [[
         html_filename      TEXT NOT NULL,            -- Local HTML file name
         html_size          INTEGER DEFAULT 0,        -- Size of HTML file in bytes
         progress           REAL DEFAULT 0.0,         -- Reading progress (0.0 to 1.0)
-        is_favorite        INTEGER DEFAULT 0,        -- 0 = false, 1 = true
+        starred            INTEGER DEFAULT 0,        -- 0 = false, 1 = true
         is_archived        INTEGER DEFAULT 0,        -- 0 = false, 1 = true
         time_added         INTEGER NOT NULL,         -- Unix timestamp when added to Instapaper
         time_updated       INTEGER NOT NULL,         -- Unix timestamp when last updated
@@ -184,7 +184,7 @@ function Storage:storeArticle(article_data, html_content)
     local stmt = self.db_conn:prepare([[
         INSERT OR REPLACE INTO articles (
             bookmark_id, title, url, html_filename, html_size,
-            is_favorite, is_archived, time_added, time_updated, time_synced,
+            starred, is_archived, time_added, time_updated, time_synced,
             sync_status, word_count, reading_time
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ]])
@@ -229,7 +229,7 @@ function Storage:storeArticleMetadata(article_data)
     local stmt = self.db_conn:prepare([[
         INSERT OR REPLACE INTO articles (
             bookmark_id, title, url, html_filename, html_size,
-            is_favorite, is_archived, time_added, time_updated, time_synced,
+            starred, is_archived, time_added, time_updated, time_synced,
             sync_status, word_count, reading_time
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ]])
@@ -286,7 +286,7 @@ function Storage:getArticle(bookmark_id)
             html_filename = row[5],
             html_size = row[6],
             progress = row[7],
-            is_favorite = row[8] == 1,
+            starred = row[8] == 1,
             is_archived = row[9] == 1,
             time_added = row[10],
             time_updated = row[11],
@@ -364,7 +364,7 @@ function Storage:getArticles()
             html_filename = row[5],
             html_size = row[6],
             progress = row[7],
-            is_favorite = row[8] == 1,
+            starred = row[8] == 1,
             is_archived = row[9] == 1,
             time_added = row[10],
             time_updated = row[11],
@@ -433,6 +433,35 @@ function Storage:getLastSyncTime()
     end
     
     return nil
+end
+
+function Storage:updateArticleStatus(bookmark_id, status_type, value)
+    self:openDB()
+    local field
+    if status_type == "starred" then
+        field = "starred"
+    elseif status_type == "archived" then
+        field = "is_archived"
+    else
+        self:closeDB()
+        logger.err("Instapaper: Unknown status_type for updateArticleStatus: " .. tostring(status_type))
+        return false, "Unknown status_type: " .. tostring(status_type)
+    end
+    local stmt = self.db_conn:prepare(string.format(
+        "UPDATE articles SET %s = ?, time_updated = ? WHERE bookmark_id = ?",
+        field
+    ))
+    local ok, err = pcall(function()
+        stmt:reset():bind(value and 1 or 0, os.time(), bookmark_id):step()
+    end)
+    if not ok then
+        logger.err("Instapaper: Failed to update article status:", err)
+        self:closeDB()
+        return false, err
+    end
+    self:closeDB()
+    logger.dbg("Instapaper: Updated article status:", bookmark_id, field, value)
+    return true
 end
 
 return Storage 

@@ -427,4 +427,59 @@ function InstapaperManager.makeHtmlHeader(title, url)
         escapeHtml(title or "Untitled"), escapeHtml(domain or ""))
 end
 
+function InstapaperManager:archiveArticle(bookmark_id)
+    if not self:isAuthenticated() then
+        logger.err("instapaper: Cannot archive article - not authenticated")
+        return false
+    end
+    logger.dbg("instapaper: Archiving article:", bookmark_id)
+    local success = self.instapaper_api_manager:archiveArticle(bookmark_id, self.token, self.token_secret)
+    if success then
+        self.storage:updateArticleStatus(bookmark_id, "archived", true)
+        logger.dbg("instapaper: Successfully archived article:", bookmark_id)
+        return true
+    else
+        logger.err("instapaper: Failed to archive article:", bookmark_id)
+        return false
+    end
+end
+
+function InstapaperManager:favoriteArticle(bookmark_id)
+    if not self:isAuthenticated() then
+        logger.err("instapaper: Cannot favorite article - not authenticated")
+        return false
+    end
+    logger.dbg("instapaper: Favoriting article:", bookmark_id)
+    local success = self.instapaper_api_manager:favoriteArticle(bookmark_id, self.token, self.token_secret)
+    if success then
+        self.storage:updateArticleStatus(bookmark_id, "starred", true)
+        logger.dbg("instapaper: Successfully favorited article:", bookmark_id)
+        return true
+    else
+        logger.err("instapaper: Failed to favorite article:", bookmark_id)
+        return false
+    end
+end
+
+function InstapaperManager:unfavoriteArticle(bookmark_id)
+    if not self:isAuthenticated() then
+        logger.err("instapaper: Cannot unfavorite article - not authenticated")
+        return false
+    end
+    logger.dbg("instapaper: Unfavoriting article:", bookmark_id)
+    local success = self.instapaper_api_manager:unfavoriteArticle(bookmark_id, self.token, self.token_secret)
+    if success then
+        self.storage:updateArticleStatus(bookmark_id, "starred", false)
+        logger.dbg("instapaper: Successfully unfavorited article:", bookmark_id)
+        return true
+    else
+        logger.err("instapaper: Failed to unfavorite article:", bookmark_id)
+        return false
+    end
+end
+
+function InstapaperManager:getArticleMetadata(bookmark_id)
+    return self.storage:getArticle(bookmark_id)
+end
+
 return InstapaperManager

@@ -221,9 +221,7 @@ function InstapaperAPIManager:generateOAuthParams(additional_params)
 end
 
 -- Generic HTTP request executor
-function InstapaperAPIManager:executeRequest(request)
-    logger.dbg("instapaper: Making request to:", request.url)
-    
+function InstapaperAPIManager:executeRequest(request)    
     -- Make the request
     local sink = {}
     socketutil:set_timeout(10, 30)
@@ -241,7 +239,6 @@ function InstapaperAPIManager:executeRequest(request)
     local body = table.concat(sink)
     
     if code == 200 then
-        logger.dbg("instapaper: Request successful, response length:", #body)
         return true, body
     else
         logger.err("instapaper: Request failed with code:", code, "response:", body)
@@ -249,9 +246,7 @@ function InstapaperAPIManager:executeRequest(request)
     end
 end
 
-function InstapaperAPIManager:authenticate(username, password)
-    logger.dbg("instapaperAuthenticator: Starting authentication for user:", username)
-    
+function InstapaperAPIManager:authenticate(username, password)    
     -- Generate OAuth parameters with auth-specific additions
     local authorization_params = self:generateOAuthParams({
         oauth_callback = "oob",
@@ -264,9 +259,7 @@ function InstapaperAPIManager:authenticate(username, password)
     local request = self:buildOAuthRequest("POST", self.ACCESS_TOKEN_URL, authorization_params, nil)
     local success, body = self:executeRequest(request)
     
-    if success then
-        logger.dbg("instapaperAuthenticator: Authentication successful, response:", body)
-        
+    if success then        
         -- Parse the response which contains the access token and secret
         local response_params = {}
         for k, v in string.gmatch(body, "([^&=]+)=([^&=]+)") do
@@ -274,7 +267,6 @@ function InstapaperAPIManager:authenticate(username, password)
         end
         
         if response_params.oauth_token and response_params.oauth_token_secret then
-            logger.dbg("instapaperAuthenticator: Successfully parsed OAuth tokens")
             return true, response_params
         else
             logger.err("instapaperAuthenticator: Missing OAuth tokens in response")
@@ -285,9 +277,7 @@ function InstapaperAPIManager:authenticate(username, password)
     end
 end
 
-function InstapaperAPIManager:getArticles(oauth_token, oauth_token_secret)
-    logger.dbg("instapaper: Fetching articles...")
-    
+function InstapaperAPIManager:getArticles(oauth_token, oauth_token_secret)    
     -- Generate OAuth parameters with API-specific additions
     local params = self:generateOAuthParams({
         oauth_token = oauth_token
@@ -313,7 +303,6 @@ function InstapaperAPIManager:getArticles(oauth_token, oauth_token_secret)
             end
             return true, articles
         else
-            logger.err("instapaper: Failed to parse output JSON")
             return false, nil
         end
     else
@@ -322,8 +311,6 @@ function InstapaperAPIManager:getArticles(oauth_token, oauth_token_secret)
 end
 
 function InstapaperAPIManager:getArticleText(bookmark_id, oauth_token, oauth_token_secret)
-    logger.dbg("instapaper: Fetching article text for bookmark:", bookmark_id)
-    
     -- Generate OAuth parameters including bookmark_id for signature
     local params = self:generateOAuthParams({
         oauth_token = oauth_token,
@@ -335,11 +322,64 @@ function InstapaperAPIManager:getArticleText(bookmark_id, oauth_token, oauth_tok
     local success, body = self:executeRequest(request)
     
     if success then
-        logger.dbg("instapaper: Successfully fetched article text, length:", #body)
         return true, body
     else
-        logger.err("instapaper: Failed to fetch article text")
         return false, nil
+    end
+end
+
+function InstapaperAPIManager:archiveArticle(bookmark_id, oauth_token, oauth_token_secret)    
+    -- Generate OAuth parameters including bookmark_id for signature
+    local params = self:generateOAuthParams({
+        oauth_token = oauth_token,
+        bookmark_id = tostring(bookmark_id)
+    })
+    
+    -- Build and execute request
+    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/archive", params, oauth_token_secret)
+    local success, body = self:executeRequest(request)
+    
+    if success then
+        logger.dbg("instapaper: Archive response", body)
+        return true
+    else
+        return false
+    end
+end
+
+function InstapaperAPIManager:favoriteArticle(bookmark_id, oauth_token, oauth_token_secret)    
+    -- Generate OAuth parameters including bookmark_id for signature
+    local params = self:generateOAuthParams({
+        oauth_token = oauth_token,
+        bookmark_id = tostring(bookmark_id)
+    })
+    
+    -- Build and execute request
+    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/star", params, oauth_token_secret)
+    local success, body = self:executeRequest(request)
+    
+    if success then
+        return true
+    else
+        return false
+    end
+end
+
+function InstapaperAPIManager:unfavoriteArticle(bookmark_id, oauth_token, oauth_token_secret)    
+    -- Generate OAuth parameters including bookmark_id for signature
+    local params = self:generateOAuthParams({
+        oauth_token = oauth_token,
+        bookmark_id = tostring(bookmark_id)
+    })
+    
+    -- Build and execute request
+    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/unstar", params, oauth_token_secret)
+    local success, body = self:executeRequest(request)
+    
+    if success then
+        return true
+    else
+        return false
     end
 end
 

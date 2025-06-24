@@ -279,9 +279,28 @@ function Instapaper:showArticleContent(article)
             })
             return
         end
+        
+        -- Store the current article for the ReaderUI module
+        self.current_article = article
+        
         -- Open the stored HTML file directly in KOReader
         local ReaderUI = require("apps/reader/readerui")
         ReaderUI:showReader(file_path)
+
+        -- Register our Instapaper module after ReaderUI is created
+        UIManager:scheduleIn(0.1, function()
+            if ReaderUI.instance then
+                local ReaderInstapaper = require("readerui")
+                local module_instance = ReaderInstapaper:new{
+                    ui = ReaderUI.instance,
+                    dialog = ReaderUI.instance,
+                    view = ReaderUI.instance.view,
+                    document = ReaderUI.instance.document,
+                }
+                ReaderUI.instance:registerModule("instapaper", module_instance)
+                logger.dbg("Instapaper: Registered ReaderInstapaper module")
+            end
+        end)
 
         -- update the article list to show the downloaded article
         self:showArticles()
