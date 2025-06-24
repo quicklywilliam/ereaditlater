@@ -122,6 +122,7 @@ function Instapaper:showLoginDialog()
                         UIManager:close(info)
 
                         if success then
+                            self.instapaperManager:syncReads()
                             self:showArticles()
                         else 
                             UIManager:show(ConfirmBox:new{
@@ -145,20 +146,12 @@ function Instapaper:showArticles()
 
     -- Get articles from database store
     local articles = self.instapaperManager:getArticles()
-    local last_sync = self.instapaperManager:getLastSyncTime()
     
     logger.dbg("instapaper: Got", #articles, "articles from database")
     
     -- Build display data
-    local kv_pairs = {
-        { "Logged in as", (self.instapaperManager.username or "unknown user") }
-    }
-    
-    if last_sync then
-        local sync_time = os.date("%Y-%m-%d %H:%M:%S", tonumber(last_sync))
-        kv_pairs[#kv_pairs + 1] = { "Last Sync", sync_time }
-    end
-    
+    local kv_pairs = {}
+        
     if articles and #articles > 0 then        
         for i = 1, #articles do
             local article = articles[i]
@@ -169,13 +162,7 @@ function Instapaper:showArticles()
             end
             local title = (isDownloaded .. article.title) or "Untitled"
             -- Extract domain from URL
-            local domain = "unknown"
-            if article.url and article.url ~= "" then
-                local domain_match = article.url:match("://([^/]+)")
-                if domain_match then
-                    domain = domain_match
-                end
-            end
+            local domain = self.instapaperManager.getDomain(article.url)
             local description = domain or "No URL"
             kv_pairs[#kv_pairs + 1] = { 
                 title,
@@ -195,13 +182,51 @@ function Instapaper:showArticles()
         title = _("Instapaper"),
         title_bar_left_icon = "appbar.menu",
         title_bar_left_icon_tap_callback = function()
+            local last_sync = self.instapaperManager:getLastSyncTime()
+            local sync_string = "Never"
+            if last_sync then
+                local sync_time = os.date("%Y-%m-%d %H:%M:%S", tonumber(last_sync))
+                sync_string = ("Last Sync: " .. sync_time)
+            end
             local Menu = require("ui/widget/menu")
             local Screen = require("device").screen
             local menu_container = Menu:new{
-                title = _("Instapaper Settings"),
+                title = _("Settings"),
                 width = Screen:getWidth() * 0.8,
                 height = Screen:getHeight() * 0.8,
                 item_table = {
+                    {
+                        text = sync_string,
+                    },
+                    {
+                        text = _("Sync"),
+                        callback = function()
+                            local info = InfoMessage:new{ text = _("Syncing articles...") }
+                            UIManager:show(info)
+                            
+                            -- Perform sync
+                            local success = self.instapaperManager:syncReads()
+                            
+                            UIManager:close(info)
+                            
+                            if success then
+                                UIManager:show(InfoMessage:new{ 
+                                    text = _("Sync completed successfully!"),
+                                    timeout = 2
+                                })
+                                -- Refresh the display
+                                self:showArticles()
+                            else
+                                UIManager:show(ConfirmBox:new{
+                                    text = _("Sync failed. Please try again."),
+                                    ok_text = _("OK"),
+                                })
+                            end
+                        end,
+                    },
+                    {   
+                        text = _("Logged in as " .. self.instapaperManager.username or "unknown user"),
+                    },
                     {
                         text = _("Log out"),
                         callback = function()
@@ -228,32 +253,6 @@ function Instapaper:showArticles()
     }
 
     UIManager:show(self.kv)
-    
-    self.kv.title_bar.right_button.icon = "appbar.settings"
-    self.kv.title_bar.right_button.callback = function()
-        -- Show loading message
-        local info = InfoMessage:new{ text = _("Syncing articles...") }
-        UIManager:show(info)
-        
-        -- Perform sync
-        local success = self.instapaperManager:syncReads()
-        
-        UIManager:close(info)
-        
-        if success then
-            UIManager:show(InfoMessage:new{ 
-                text = _("Sync completed successfully!"),
-                timeout = 2
-            })
-            -- Refresh the display
-            self:showArticles()
-        else
-            UIManager:show(ConfirmBox:new{
-                text = _("Sync failed. Please try again."),
-                ok_text = _("OK"),
-            })
-        end
-    end
 end
 
 function Instapaper:showArticleContent(article)

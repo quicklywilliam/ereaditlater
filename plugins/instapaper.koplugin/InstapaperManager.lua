@@ -9,6 +9,7 @@ local InstapaperAPIManager = require("lib/instapaperapimanager")
 local Storage = require("lib/storage")
 local DataStorage = require("datastorage")
 local LuaSettings = require("luasettings")
+local util = require("util")
 
 local InstapaperManager = {}
 
@@ -390,6 +391,10 @@ function InstapaperManager:downloadArticle(bookmark_id)
         return false, "Failed to download article"
     end
     
+    -- Prepend header to HTML
+    local header_html = InstapaperManager.makeHtmlHeader(article_meta.title, article_meta.url)
+    html_content = header_html .. html_content
+    
     -- Check if HTML already contains data URIs (images already processed)
     local has_data_uris = html_content:find("data:image/")
     if has_data_uris then
@@ -412,6 +417,32 @@ function InstapaperManager:downloadArticle(bookmark_id)
     -- Return the stored article
     local stored_article = self.storage:getArticle(bookmark_id)
     return true, stored_article
+end
+
+function InstapaperManager.getDomain(url)
+    if not url or url == "" then return "" end
+    local domain = url:match("://([^/]+)")
+    if domain then
+        return domain
+    else
+        return url
+    end
+end
+
+local function escapeHtml(str)
+    if not str then return "" end
+    return (str:gsub("[&<>\"]", {
+        ["&"] = "&amp;",
+        ["<"] = "&lt;",
+        [">"] = "&gt;",
+        ['"'] = "&quot;",
+    }))
+end
+
+function InstapaperManager.makeHtmlHeader(title, url)
+    local domain = InstapaperManager.getDomain(url)
+    return string.format([[<div style="margin-bottom:2em"><h1 style="font-size:1.5em;font-weight:bold;margin-bottom:0.2em;">%s</h1><div style="font-size:0.8em;color:#444;font-family:sans-serif;">%s</div></div>]],
+        escapeHtml(title or "Untitled"), escapeHtml(domain or ""))
 end
 
 return InstapaperManager
