@@ -33,6 +33,7 @@ local Blitbuffer = require("ffi/blitbuffer")
 local Size = require("ui/size")
 local Geom = require("ui/geometry")
 local TitleBar = require("ui/widget/titlebar")
+local OverlapGroup = require("ui/widget/overlapgroup")
 
 local Instapaper = WidgetContainer:extend{
     name = "instapaper",
@@ -188,42 +189,48 @@ function ArticleItem:init()
     local download_icon = nil
     if self.article.html_size and self.article.html_size > 0 then
         download_icon = TextWidget:new{
+            alignment = "left",
             text = "⬇️",
             face = Font:getFace("infont", 20),
+            max_width = Screen:scaleBySize(20),
         }
     end
     
     -- Title widget
     local title_widget = TextWidget:new{
         text = title_text,
-        face = Font:getFace("cfont", 18),
-        font_weight = "bold",
-        max_width = self.width - Screen:scaleBySize(40), -- Leave space for padding
+        face = Font:getFace("x_smalltfont", 16),
+        max_width = self.width - Screen:scaleBySize(40), -- Leave space for download icon
+        width = self.width - Screen:scaleBySize(40),
     }
     
     -- Domain widget
     local domain_widget = TextWidget:new{
         text = domain,
         face = Font:getFace("infont", 14),
-        max_width = self.width - Screen:scaleBySize(40),
+        max_width = self.width - Screen:scaleBySize(40), -- Leave space for download icon
+        width = self.width - Screen:scaleBySize(40),
     }
     
     -- Layout: title and domain stacked vertically
     local text_group = VerticalGroup:new{
         align = "left",
         title_widget,
-        width = self.width - Screen:scaleBySize(40), -- Leave space for download icon
-        VerticalSpan:new{ width = Screen:scaleBySize(4) },
+        VerticalSpan:new{ height = Screen:scaleBySize(4) },
         domain_widget,
     }
     
     -- Main content with download icon on the right
     local content_group
     if download_icon then
-        content_group = HorizontalGroup:new{
-            align = "center",
+        content_group = OverlapGroup:new {
+            dimen = self.dimen:copy(),
             text_group,
-            download_icon,
+            RightContainer:new{
+                align = "center",
+                dimen = Geom:new{ w = self.width - Screen:scaleBySize(20), h = self.height },
+                download_icon,
+            },
         }
     else
         content_group = text_group
