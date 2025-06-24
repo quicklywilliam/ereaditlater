@@ -162,7 +162,6 @@ function Instapaper:showArticles()
     if articles and #articles > 0 then        
         for i = 1, #articles do
             local article = articles[i]
-            logger.dbg("instapaper: file size:", article.html_size)
 
             local isDownloaded = ""
             if article.html_size and article.html_size > 0 then

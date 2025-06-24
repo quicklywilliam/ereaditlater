@@ -199,7 +199,7 @@ function Storage:storeArticle(article_data, html_content)
             file_size,
             article_data.starred and 1 or 0,
             article_data.type == "archive" and 1 or 0,
-            article_data.time_added or current_time,
+            article_data.time or current_time,
             article_data.time_updated or current_time,
             current_time,
             "synced",
@@ -239,14 +239,14 @@ function Storage:storeArticleMetadata(article_data)
     
     local ok, err = pcall(function()
         stmt:reset():bind(
-            article_data.bookmark_id,  -- This is the Instapaper bookmark_id
+            article_data.bookmark_id,
             article_data.title,
             article_data.url,
             filename,
             0, -- html_size (will be updated when HTML is downloaded)
             article_data.starred and 1 or 0,
             article_data.type == "archive" and 1 or 0,
-            article_data.time_added or current_time,
+            article_data.time or current_time,
             article_data.time_updated or current_time,
             current_time,
             "synced",
