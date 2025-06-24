@@ -339,13 +339,11 @@ function InstapaperManager:downloadArticle(bookmark_id)
         logger.err("instapaper: Cannot download article - not authenticated")
         return false, "Not authenticated"
     end
-    
     -- Check if we already have this article
     local existing = self.storage:getArticle(bookmark_id)
     if existing then
         -- Load the HTML content from file
         local html_content = self.storage:getArticleHTML(existing.html_filename)
-        
         if html_content and #html_content > 0 then
             -- Add HTML content to the existing article data
             existing.html = html_content
@@ -355,28 +353,26 @@ function InstapaperManager:downloadArticle(bookmark_id)
             logger.dbg("instapaper: Article exists but has no HTML content, will download")
         end
     end
-    
     -- Find the article metadata from our database store
     local article_meta = self.storage:getArticle(bookmark_id)
-    
     if not article_meta then
         logger.err("instapaper: Article not found in database:", bookmark_id)
         return false, "Article not found"
     end
-    
     -- Download article text from API
     logger.dbg("instapaper: Downloading article text for:", bookmark_id)
     local success, html_content = self.instapaper_api_manager:getArticleText(bookmark_id, self.token, self.token_secret)
-    
     if not success or not html_content then
         logger.err("instapaper: Failed to download article text:", bookmark_id)
         return false, "Failed to download article"
     end
-    
-    -- Prepend header to HTML
+    -- If the HTML does not contain a <body> tag, wrap it
+    if not html_content:find("<body", 1, true) then
+        html_content = "<html><body>" .. html_content .. "</body></html>"
+    end
+    -- Prepend header to HTML (inside body)
     local header_html = InstapaperManager.makeHtmlHeader(article_meta.title, article_meta.url)
-    html_content = header_html .. html_content
-    
+    html_content = html_content:gsub("(<body[^>]*>)", "%1" .. header_html, 1)
     -- Check if HTML already contains data URIs (images already processed)
     local has_data_uris = html_content:find("data:image/")
     if has_data_uris then
@@ -386,16 +382,13 @@ function InstapaperManager:downloadArticle(bookmark_id)
         logger.dbg("instapaper: Processing images in HTML content")
         html_content = self:processHtmlImages(html_content, bookmark_id)
     end
-    
     -- Store the article
     local store_success, filename = self.storage:storeArticle(article_meta, html_content)
     if not store_success then
         logger.err("instapaper: Failed to store article:", bookmark_id)
         return false, "Failed to store article"
     end
-    
     logger.dbg("instapaper: Successfully downloaded and stored article:", bookmark_id)
-    
     -- Return the stored article
     local stored_article = self.storage:getArticle(bookmark_id)
     return true, stored_article
