@@ -105,7 +105,43 @@ function InstapaperManager:logout()
     self.username = nil
     -- Clear database storage
     self.storage:clearAll()
+    
+    -- Clean up thumbnail files
+    self:clearThumbnails()
+    
     logger.dbg("instapaper: Logged out and cleared tokens")
+end
+
+function InstapaperManager:clearThumbnails()
+    local DataStorage = require("datastorage")
+    local lfs = require("libs/libkoreader-lfs")
+    
+    local thumbnail_dir = DataStorage:getDataDir() .. "/instapaper/thumbnails"
+    
+    -- Check if thumbnail directory exists
+    if not lfs.attributes(thumbnail_dir, "mode") then
+        logger.dbg("instapaper: No thumbnail directory to clean up")
+        return
+    end
+    
+    -- Remove all thumbnail files
+    local count = 0
+    for file in lfs.dir(thumbnail_dir) do
+        if file ~= "." and file ~= ".." and file:match("_thumbnail%.jpg$") then
+            local filepath = thumbnail_dir .. "/" .. file
+            local success, err = os.remove(filepath)
+            if success then
+                count = count + 1
+            else
+                logger.warn("instapaper: Failed to remove thumbnail file:", filepath, err)
+            end
+        end
+    end
+    
+    -- Try to remove the thumbnail directory itself
+    lfs.rmdir(thumbnail_dir)
+    
+    logger.dbg("instapaper: Cleaned up", count, "thumbnail files")
 end
 
 function InstapaperManager:authenticate(username, password)
@@ -312,9 +348,21 @@ function InstapaperManager:processHtmlImages(html_content, bookmark_id)
             return false
         end
         
-        -- Scale to 90x90 thumbnail (square crop)
-        local thumbnail_bb = RenderImage:scaleBlitBuffer(image_bb, 90, 90)
+        -- Get original dimensions
+        local orig_w, orig_h = image_bb:getWidth(), image_bb:getHeight()
+        
+        -- Crop to square first (center crop)
+        local crop_size = math.min(orig_w, orig_h)
+        local crop_x = math.floor((orig_w - crop_size) / 2)
+        local crop_y = math.floor((orig_h - crop_size) / 2)
+        
+        -- Create cropped square image
+        local cropped_bb = image_bb:viewport(crop_x, crop_y, crop_size, crop_size)
         image_bb:free() -- Free original image
+        
+        -- Scale the cropped square to 90x90
+        local thumbnail_bb = RenderImage:scaleBlitBuffer(cropped_bb, 90, 90)
+        cropped_bb:free() -- Free cropped image
         
         -- Save as JPEG
         local success = thumbnail_bb:writeJPG(thumbnail_filename, 85) -- 85% quality

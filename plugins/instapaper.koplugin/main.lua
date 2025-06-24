@@ -207,7 +207,7 @@ function ArticleItem:init()
             file = thumbnail_path,
             width = thumbnail_size,
             height = thumbnail_size,
-            scale_factor = 0, -- Scale to fit
+            scale_factor = nil, -- Scale to fit
         }
     else
         -- Create placeholder with grey background
