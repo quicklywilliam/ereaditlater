@@ -10,6 +10,10 @@ local Storage = require("lib/storage")
 local DataStorage = require("datastorage")
 local LuaSettings = require("luasettings")
 local util = require("util")
+local http = require("socket.http")
+local ltn12 = require("ltn12")
+local socketutil = require("socketutil")
+local socket = require("socket")
 
 local InstapaperManager = {}
 
@@ -206,7 +210,6 @@ function InstapaperManager:getLastSyncTime()
 end
 
 function InstapaperManager:processHtmlImages(html_content, bookmark_id)
-    -- Count how many external images we need to process
     local external_images = {}
     html_content:gsub('<img([^>]+)>', function(img_attrs)
         local src = img_attrs:match('src="([^"]+)"')
@@ -219,229 +222,165 @@ function InstapaperManager:processHtmlImages(html_content, bookmark_id)
         return html_content
     end
     
-    logger.dbg("instapaper: Processing", #external_images, "images")
-    
-    -- Function to download an image from URL
-    local function downloadImage(url)
-        local http = require("socket.http")
-        local ltn12 = require("ltn12")
-        local socketutil = require("socketutil")
-        local socket = require("socket")
-        
-        -- Check network connectivity first
-        if not NetworkMgr:isOnline() then
-            logger.warn("instapaper: No network connectivity available")
-            return nil, nil
-        end
-        
-        logger.dbg("instapaper: Attempting to download image:", url)
-        
-        local response_body = {}
-        socketutil:set_timeout(10, 30) -- 10s timeout, 30s total
-        
-        local request = {
-            url = url,
-            method = "GET",
-            sink = ltn12.sink.table(response_body),
-            headers = {
-                ["User-Agent"] = "KOReader/1.0"
-            }
-        }
-        
-        local code, headers, status = socket.skip(1, http.request(request))
-        socketutil:reset_timeout()
-        
-        -- Check for timeout or SSL errors
-        if code == socketutil.TIMEOUT_CODE or
-           code == socketutil.SSL_HANDSHAKE_CODE or
-           code == socketutil.SINK_TIMEOUT_CODE then
-            logger.warn("instapaper: Request interrupted:", status or code)
-            return nil, nil
-        end
-        
-        -- Check for HTTP errors
-        if code >= 400 and code < 500 then
-            logger.warn("instapaper: HTTP error:", status or code)
-            return nil, nil
-        end
-        
-        -- Check for network errors
-        if headers == nil then
-            logger.warn("instapaper: No HTTP headers:", status or code or "network unreachable")
-            return nil, nil
-        end
-        
-        if code ~= 200 then
-            logger.warn("instapaper: Failed to download image:", url, "HTTP code:", code)
-            return nil, nil
-        end
-        
-        local image_data = table.concat(response_body)
-        if #image_data == 0 then
-            logger.warn("instapaper: Empty image data for:", url)
-            return nil, nil
-        end
-        
-        -- Check if image is too large (base64 increases size by ~33%)
-        -- Limit to 1MB to avoid memory issues
-        if #image_data > 1024 * 1024 then
-            logger.warn("instapaper: Image too large for data URI:", url, "size:", #image_data)
-            return nil, nil
-        end
-        
-        -- Validate that we actually got image data
-        local content_type = headers and headers["content-type"]
-        if content_type and not content_type:match("^image/") then
-            logger.warn("instapaper: Content-Type is not an image:", content_type, "for URL:", url)
-            return nil, nil
-        end
-        
-        return image_data, content_type
-    end
-    
-    -- Function to convert image data to data URI
-    local function saveImageToDataUri(image_data, content_type, url)
-        local mime = require("mime")
-        
-        -- Determine MIME type from headers or URL
-        local mime_type = "image/jpeg" -- default
-        
-        if content_type then
-            mime_type = content_type:match("^([^;]+)")
-        else
-            -- Try to guess from URL extension
-            local ext = url:match("%.([^%.?]+)")
-            if ext then
-                ext = ext:lower()
-                if ext == "png" then mime_type = "image/png"
-                elseif ext == "gif" then mime_type = "image/gif"
-                elseif ext == "webp" then mime_type = "image/webp"
-                elseif ext == "svg" then mime_type = "image/svg+xml"
-                end
-            end
-        end
-        
-        -- Convert to base64 data URI
-        local base64_data = mime.b64(image_data)
-        return string.format("data:%s;base64,%s", mime_type, base64_data)
-    end
-    
-    -- Function to save thumbnail image to file
-    local function saveThumbnailImageToFile(image_data, bookmark_id)
-        local RenderImage = require("ui/renderimage")
-        local DataStorage = require("datastorage")
-        
-        -- Create thumbnail directory if it doesn't exist
-        local thumbnail_dir = DataStorage:getDataDir() .. "/instapaper/thumbnails"
-        local lfs = require("libs/libkoreader-lfs")
-        if not lfs.attributes(thumbnail_dir, "mode") then
-            lfs.mkdir(thumbnail_dir)
-        end
-        
-        -- Generate thumbnail filename
-        local thumbnail_filename = string.format("%s/%s_thumbnail.jpg", thumbnail_dir, bookmark_id)
-        
-        -- Try to render the image data
-        local image_bb = RenderImage:renderImageData(image_data, #image_data)
-        if not image_bb then
-            logger.warn("instapaper: Failed to render image for thumbnail:", bookmark_id)
-            return false
-        end
-        
-        -- Get original dimensions
-        local orig_w, orig_h = image_bb:getWidth(), image_bb:getHeight()
-        
-        -- Crop to square first (center crop)
-        local crop_size = math.min(orig_w, orig_h)
-        local crop_x = math.floor((orig_w - crop_size) / 2)
-        local crop_y = math.floor((orig_h - crop_size) / 2)
-        
-        -- Create cropped square image
-        local cropped_bb = image_bb:viewport(crop_x, crop_y, crop_size, crop_size)
-        image_bb:free() -- Free original image
-        
-        -- Scale the cropped square to 90x90
-        local thumbnail_bb = RenderImage:scaleBlitBuffer(cropped_bb, 90, 90)
-        cropped_bb:free() -- Free cropped image
-        
-        -- Save as JPEG
-        local success = thumbnail_bb:writeJPG(thumbnail_filename, 85) -- 85% quality
-        thumbnail_bb:free() -- Free thumbnail
-        
-        if success then
-            logger.dbg("instapaper: Saved thumbnail:", thumbnail_filename)
-            return true
-        else
-            logger.warn("instapaper: Failed to save thumbnail:", thumbnail_filename)
-            return false
-        end
-    end
-    
-    -- Function to try downloading with fallback to HTTP
-    local function downloadImageWithFallback(url)
-        local image_data, content_type = downloadImage(url)
-        if image_data then
-            return image_data, content_type
-        end
-        
-        -- If HTTPS failed, try HTTP as fallback
-        if url:sub(1, 8) == "https://" then
-            local http_url = "http://" .. url:sub(9)
-            return downloadImage(http_url)
-        end
-        
-        return nil, nil
-    end
-    
-    -- Track if we've saved a thumbnail for this article
     local thumbnail_saved = false
     
-    -- Process img tags with external URLs
     local processed_html = html_content:gsub('<img([^>]+)>', function(img_attrs)
-        -- Extract src attribute from the img tag
         local src = img_attrs:match('src="([^"]+)"')
-        if not src then
-            -- No src attribute found, return unchanged
-            return string.format('<img%s>', img_attrs)
-        end
-        
-        -- Skip if already a data URI or relative path
+        if not src then return string.format('<img%s>', img_attrs) end
         if src:sub(1, 5) == "data:" or src:sub(1, 1) == "/" or src:sub(1, 1) == "." then
             return string.format('<img%s>', img_attrs)
         end
-        
-        -- Only process HTTP/HTTPS URLs
         if src:sub(1, 7) == "http://" or src:sub(1, 8) == "https://" then
-            local image_data, content_type = downloadImageWithFallback(src)
+            local image_data, content_type = self:downloadImageWithFallback(src, 1024 * 1024)
             if image_data then
-                -- Save thumbnail for the first image only
                 if not thumbnail_saved then
-                    if saveThumbnailImageToFile(image_data, bookmark_id) then
+                    if self:saveThumbnailImageToFile(image_data, bookmark_id) then
                         thumbnail_saved = true
                     end
                 end
-                
-                -- Convert to data URI
-                local data_uri = saveImageToDataUri(image_data, content_type, src)
+                local data_uri = self:saveImageToDataUri(image_data, content_type, src)
                 if data_uri then
-                    -- Replace the src attribute with the data URI
                     local new_attrs = img_attrs:gsub('src="([^"]+)"', string.format('src="%s"', data_uri))
                     return string.format('<img%s>', new_attrs)
                 else
                     logger.warn("instapaper: Failed to convert image to data URI, removing img tag:", src)
-                    return "" -- Remove the img tag if conversion fails
+                    return ""
                 end
             else
                 logger.warn("instapaper: Failed to download image, removing img tag:", src)
-                return "" -- Remove the img tag if download fails
+                return ""
             end
         end
-        
-        -- Return unchanged for other cases
         return string.format('<img%s>', img_attrs)
     end)
-    
     return processed_html
+end
+
+
+function InstapaperManager:downloadImage(url, max_size)
+    if not NetworkMgr:isOnline() then
+        logger.warn("instapaper: No network connectivity available")
+        return nil, nil
+    end
+    
+    local response_body = {}
+    socketutil:set_timeout(10, 30)
+    local request = {
+        url = url,
+        method = "GET",
+        sink = ltn12.sink.table(response_body),
+        headers = { ["User-Agent"] = "KOReader/1.0" }
+    }
+    local code, headers, status = socket.skip(1, http.request(request))
+    socketutil:reset_timeout()
+    if code == socketutil.TIMEOUT_CODE or code == socketutil.SSL_HANDSHAKE_CODE or code == socketutil.SINK_TIMEOUT_CODE then
+        logger.warn("instapaper: Request interrupted:", status or code)
+        return nil, nil
+    end
+    if code >= 400 and code < 500 then
+        logger.warn("instapaper: HTTP error:", status or code)
+        return nil, nil
+    end
+    if headers == nil then
+        logger.warn("instapaper: No HTTP headers:", status or code or "network unreachable")
+        return nil, nil
+    end
+    if code ~= 200 then
+        logger.warn("instapaper: Failed to download image:", url, "HTTP code:", code)
+        return nil, nil
+    end
+    local image_data = table.concat(response_body)
+    if #image_data == 0 then
+        logger.warn("instapaper: Empty image data for:", url)
+        return nil, nil
+    end
+    local size_limit = max_size or 1024 * 1024
+    if #image_data > size_limit then
+        logger.warn("instapaper: Image too large:", url, "size:", #image_data, "limit:", size_limit)
+        return nil, nil
+    end
+    local content_type = headers and headers["content-type"]
+    if content_type and not content_type:match("^image/") then
+        logger.warn("instapaper: Content-Type is not an image:", content_type, "for URL:", url)
+        return nil, nil
+    end
+    return image_data, content_type
+end
+
+function InstapaperManager:downloadImageWithFallback(url, max_size)
+    local image_data, content_type = self:downloadImage(url, max_size)
+    if image_data then return image_data, content_type end
+    if url:sub(1, 8) == "https://" then
+        local http_url = "http://" .. url:sub(9)
+        return self:downloadImage(http_url, max_size)
+    end
+    return nil, nil
+end
+
+function InstapaperManager:saveImageToDataUri(image_data, content_type, url)
+    local mime = require("mime")
+    local mime_type = "image/jpeg"
+    if content_type then
+        mime_type = content_type:match("^([^;]+)")
+    else
+        local ext = url:match("%.([^%.?]+)")
+        if ext then
+            ext = ext:lower()
+            if ext == "png" then mime_type = "image/png"
+            elseif ext == "gif" then mime_type = "image/gif"
+            elseif ext == "webp" then mime_type = "image/webp"
+            elseif ext == "svg" then mime_type = "image/svg+xml"
+            end
+        end
+    end
+    local base64_data = mime.b64(image_data)
+    return string.format("data:%s;base64,%s", mime_type, base64_data)
+end
+
+function InstapaperManager:saveThumbnailImageToFile(image_data, bookmark_id)
+    local RenderImage = require("ui/renderimage")
+    local DataStorage = require("datastorage")
+    local thumbnail_dir = DataStorage:getDataDir() .. "/instapaper/thumbnails"
+    local lfs = require("libs/libkoreader-lfs")
+    
+    if not lfs.attributes(thumbnail_dir, "mode") then 
+        lfs.mkdir(thumbnail_dir)
+    end
+    
+    local thumbnail_filename = string.format("%s/%s_thumbnail.jpg", thumbnail_dir, bookmark_id)
+    
+    local image_bb = RenderImage:renderImageData(image_data, #image_data)
+    if not image_bb then
+        logger.warn("instapaper: Failed to render image for thumbnail:", bookmark_id)
+        return false
+    end
+    
+    local orig_w, orig_h = image_bb:getWidth(), image_bb:getHeight()
+    local crop_size = math.min(orig_w, orig_h)
+    local crop_x = math.floor((orig_w - crop_size) / 2)
+    local crop_y = math.floor((orig_h - crop_size) / 2)
+    
+    local cropped_bb = image_bb:viewport(crop_x, crop_y, crop_size, crop_size)
+    image_bb:free()
+    
+    local thumbnail_bb = RenderImage:scaleBlitBuffer(cropped_bb, 90, 90)
+    cropped_bb:free()
+    
+    if not thumbnail_bb then
+        logger.warn("instapaper: Failed to scale image to thumbnail size")
+        return false
+    end
+    
+    local success, err = thumbnail_bb:writeToFile(thumbnail_filename, "jpg", 85)
+    thumbnail_bb:free()
+    
+    if success then
+        logger.dbg("instapaper: Saved thumbnail:", thumbnail_filename)
+        return true
+    else
+        logger.warn("instapaper: Failed to save thumbnail:", thumbnail_filename, "Error:", err)
+        return false
+    end
 end
 
 function InstapaperManager:downloadArticle(bookmark_id)
