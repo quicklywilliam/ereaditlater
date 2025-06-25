@@ -8,7 +8,6 @@ local KeyValuePage = require("ui/widget/keyvaluepage")
 local InstapaperAPIManager = require("lib/instapaperapimanager")
 local Storage = require("lib/storage")
 local DataStorage = require("datastorage")
-local LuaSettings = require("luasettings")
 local util = require("util")
 local http = require("socket.http")
 local ltn12 = require("ltn12")
@@ -35,35 +34,7 @@ function InstapaperManager:new()
 end
 
 
--- Plugin-specific settings storage
-local function getSettings()
-    local settings = LuaSettings:open(DataStorage:getSettingsDir().."/instapaper.lua")
-    settings:readSetting("instapaper", {})
-    return settings
-end
 
--- Generic settings methods
-function InstapaperManager:getSetting(key, default)
-    local settings = getSettings()
-    local data = settings.data.instapaper or {}
-    return data[key] ~= nil and data[key] or default
-end
-
-function InstapaperManager:setSetting(key, value)
-    local settings = getSettings()
-    local data = settings.data.instapaper or {}
-    data[key] = value
-    settings:saveSetting("instapaper", data)
-    settings:flush()
-end
-
-function InstapaperManager:delSetting(key)
-    local settings = getSettings()
-    local data = settings.data.instapaper or {}
-    data[key] = nil
-    settings:saveSetting("instapaper", data)
-    settings:flush()
-end
 
 function InstapaperManager:isAuthenticated()
     return self.instapaper_api_manager:isAuthenticated()
