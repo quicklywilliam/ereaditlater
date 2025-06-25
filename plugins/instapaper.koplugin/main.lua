@@ -384,6 +384,19 @@ function Instapaper:showArticles()
         left_icon_tap_callback = function()
             self:showMenu()
         end,
+        right_icon = "close",
+        right_icon_tap_callback = function()
+            UIManager:show(ConfirmBox:new{
+                text = _("Quit Instapaper and return to Kobo?"),
+                icon = "notice-question",
+                ok_text = _("Quit"),
+                cancel_text = _("Cancel"),
+                ok_callback = function()
+                    -- Exit KOReader entirely
+                    os.exit(0)
+                end,
+            })
+        end,
         show_parent = self,
     }
     local header_height = header:getHeight()
@@ -450,21 +463,17 @@ function Instapaper:showMenu()
     local last_sync = self.instapaperManager:getLastSyncTime()
     local sync_string = "Never"
     if last_sync then
-        local sync_time = os.date("%Y-%m-%d %H:%M:%S", tonumber(last_sync))
-        sync_string = ("Last Sync: " .. sync_time)
+        local sync_time = os.date("%m-%d %H:%M", tonumber(last_sync))
+        sync_string = ("Sync (last: " .. sync_time .. ")")
     end
     local Menu = require("ui/widget/menu")
     local menu_container = Menu:new{
-        title = _("Settings"),
         width = Screen:getWidth() * 0.8,
         height = Screen:getHeight() * 0.8,
         is_enable_shortcut = false,
         item_table = {
             {
                 text = sync_string,
-            },
-            {
-                text = _("Sync"),
                 callback = function()
                     local info = InfoMessage:new{ text = _("Syncing articles...") }
                     UIManager:show(info)
@@ -489,11 +498,8 @@ function Instapaper:showMenu()
                     end
                 end,
             },
-            {   
-                text = _("Logged in as " .. self.instapaperManager.username or "unknown user"),
-            },
             {
-                text = _("Log out"),
+                text = _("Log out (" .. (self.instapaperManager.username or "unknown user") .. ")"),
                 callback = function()
                     UIManager:show(ConfirmBox:new{
                         text = _("Logout of Instapaper?"),
@@ -517,20 +523,6 @@ function Instapaper:showMenu()
                     -- Open the File Manager
                     local FileManager = require("apps/filemanager/filemanager")
                     FileManager:showFiles()
-                end,
-            },
-            {
-                text = _("Quit Instapaper"),
-                callback = function()
-                    UIManager:show(ConfirmBox:new{
-                        text = _("Exit KOReader and return to Kobo?"),
-                        ok_text = _("Exit"),
-                        cancel_text = _("Cancel"),
-                        ok_callback = function()
-                            -- Exit KOReader entirely
-                            os.exit(0)
-                        end,
-                    })
                 end,
             },
         },
