@@ -505,6 +505,19 @@ function Instapaper:showMenu()
                     })
                 end,
             },
+            {
+                text = _("Exit to KOReader"),
+                callback = function()
+                    UIManager:close(menu_container)
+                    -- Close the current Instapaper UI
+                    if self.list_view then
+                        UIManager:close(self.list_view)
+                    end
+                    -- Open the File Manager
+                    local FileManager = require("apps/filemanager/filemanager")
+                    FileManager:showFiles()
+                end,
+            },
         },
     }
     UIManager:show(menu_container)
