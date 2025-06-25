@@ -518,6 +518,20 @@ function Instapaper:showMenu()
                     FileManager:showFiles()
                 end,
             },
+            {
+                text = _("Quit Instapaper"),
+                callback = function()
+                    UIManager:show(ConfirmBox:new{
+                        text = _("Exit KOReader and return to Kobo?"),
+                        ok_text = _("Exit"),
+                        cancel_text = _("Cancel"),
+                        ok_callback = function()
+                            -- Exit KOReader entirely
+                            os.exit(0)
+                        end,
+                    })
+                end,
+            },
         },
     }
     UIManager:show(menu_container)
