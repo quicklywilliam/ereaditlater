@@ -340,40 +340,38 @@ end
 function InstapaperManager:saveThumbnailImageToFile(image_data, bookmark_id)
     local RenderImage = require("ui/renderimage")
     local DataStorage = require("datastorage")
-    local thumbnail_dir = DataStorage:getDataDir() .. "/instapaper/thumbnails"
     local lfs = require("libs/libkoreader-lfs")
-    
-    if not lfs.attributes(thumbnail_dir, "mode") then 
-        lfs.mkdir(thumbnail_dir)
-    end
-    
-    local thumbnail_filename = string.format("%s/%s_thumbnail.jpg", thumbnail_dir, bookmark_id)
     
     local image_bb = RenderImage:renderImageData(image_data, #image_data)
     if not image_bb then
-        logger.warn("instapaper: Failed to render image for thumbnail:", bookmark_id)
+        logger.warn("instapaper: Failed to render image")
         return false
     end
     
+    -- Crop
     local orig_w, orig_h = image_bb:getWidth(), image_bb:getHeight()
     local crop_size = math.min(orig_w, orig_h)
     local crop_x = math.floor((orig_w - crop_size) / 2)
     local crop_y = math.floor((orig_h - crop_size) / 2)
     
     local cropped_bb = image_bb:viewport(crop_x, crop_y, crop_size, crop_size)
-    image_bb:free()
     
+    -- Scale
     local thumbnail_bb = RenderImage:scaleBlitBuffer(cropped_bb, 90, 90)
-    cropped_bb:free()
     
-    if not thumbnail_bb then
-        logger.warn("instapaper: Failed to scale image to thumbnail size")
-        return false
+    -- Save
+    local thumbnail_dir = DataStorage:getDataDir() .. "/instapaper/thumbnails"
+    if not lfs.attributes(thumbnail_dir, "mode") then 
+        lfs.mkdir(thumbnail_dir)
     end
+    local thumbnail_filename = string.format("%s/%s_thumbnail.jpg", thumbnail_dir, bookmark_id)
     
-    local success, err = thumbnail_bb:writeToFile(thumbnail_filename, "jpg", 85)
+    local save_success, err = thumbnail_bb:writeToFile(thumbnail_filename, "jpg", 85)
+    
+    image_bb:free()
+    cropped_bb:free()
     thumbnail_bb:free()
-    
+        
     if success then
         logger.dbg("instapaper: Saved thumbnail:", thumbnail_filename)
         return true
