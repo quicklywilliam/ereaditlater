@@ -169,8 +169,15 @@ function Instapaper:showLoginDialog()
                         if success then
                             UIManager:close(self.login_dialog)
 
-                            self.instapaperManager:syncReads()
-                            self:showArticles()
+                            -- initial sync can take a while, so show a message
+                            local info = InfoMessage:new{ text = _("Syncing articles...") }
+                            UIManager:show(info)
+
+                            UIManager:scheduleIn(0.1, function()
+                                self.instapaperManager:syncReads()
+                                self:showArticles()
+                                UIManager:close(info)
+                            end)
                         else 
                             UIManager:show(ConfirmBox:new{
                                 text = _("Could not log in: " .. error_message),
