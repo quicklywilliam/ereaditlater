@@ -341,19 +341,19 @@ function ReaderInstapaper:onArchiveArticle()
     
     -- Perform archive action
     UIManager:nextTick(function()
-        local success = self.instapaperManager:archiveArticle(self.current_article.bookmark_id)
+        local success, error_message = self.instapaperManager:archiveArticle(self.current_article.bookmark_id)
         UIManager:close(info)
         
         if success then
             UIManager:show(InfoMessage:new{
-                text = _("Article archived successfully!"),
+                text = _("Article archived"),
                 timeout = 2,
             })
             -- Return to articles list
             self:onBackToArticles()
         else
             UIManager:show(ConfirmBox:new{
-                text = _("Failed to archive article. Please try again."),
+                text = _("Failed to archive article: " .. error_message),
                 ok_text = _("OK"),
             })
         end
@@ -377,7 +377,7 @@ function ReaderInstapaper:onFavoriteArticle()
     
     -- Perform favorite action
     UIManager:nextTick(function()
-        local success = self.instapaperManager:favoriteArticle(self.current_article.bookmark_id)
+        local success, error_message = self.instapaperManager:favoriteArticle(self.current_article.bookmark_id)
         UIManager:close(info)
         
         if success then
@@ -390,12 +390,12 @@ function ReaderInstapaper:onFavoriteArticle()
             end)
             
             UIManager:show(InfoMessage:new{
-                text = _("Article favorited successfully!"),
+                text = _("Article favorited"),
                 timeout = 2,
             })
         else
             UIManager:show(ConfirmBox:new{
-                text = _("Failed to favorite article. Please try again."),
+                text = _("Failed to favorite article: " .. error_message),
                 ok_text = _("OK"),
             })
         end
@@ -419,7 +419,7 @@ function ReaderInstapaper:onUnfavoriteArticle()
     
     -- Perform favorite action
     UIManager:nextTick(function()
-        local success = self.instapaperManager:unfavoriteArticle(self.current_article.bookmark_id)
+        local success, error_message = self.instapaperManager:unfavoriteArticle(self.current_article.bookmark_id)
         UIManager:close(info)
         
         if success then
@@ -432,12 +432,12 @@ function ReaderInstapaper:onUnfavoriteArticle()
             end)
             
             UIManager:show(InfoMessage:new{
-                text = _("Article unfavorited successfully!"),
+                text = _("Article unfavorited"),
                 timeout = 2,
             })
         else
             UIManager:show(ConfirmBox:new{
-                text = _("Failed to unfavorite article. Please try again."),
+                text = _("Failed to unfavorite article: " .. error_message),
                 ok_text = _("OK"),
             })
         end

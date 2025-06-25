@@ -158,7 +158,7 @@ function InstapaperManager:authenticate(username, password)
     
     logger.dbg("instapaper: Starting OAuth xAuth authentication for user:", username)
     
-    local success, params = self.instapaper_api_manager:authenticate(username, password)
+    local success, params, error_message = self.instapaper_api_manager:authenticate(username, password)
     
     if success and params then
         logger.dbg("instapaper: Authentication successful")
@@ -169,12 +169,12 @@ function InstapaperManager:authenticate(username, password)
         self:saveTokens(self.token, self.token_secret)
         self:saveUsername(username)
         
-        return true
+        return true, nil
     else
-        logger.err("instapaper: Authentication failed")
+        logger.err("instapaper: Authentication failed:", error_message)
         self.is_authenticated = false
         
-        return false
+        return false, error_message
     end
 end
 
@@ -186,7 +186,7 @@ function InstapaperManager:syncReads()
     
     logger.dbg("instapaper: Syncing reads from Instapaper...")
     
-    local success, articles = self.instapaper_api_manager:getArticles(self.token, self.token_secret)
+    local success, articles, error_message = self.instapaper_api_manager:getArticles(self.token, self.token_secret)
     
     if success and articles then
         -- Store articles in database
@@ -194,10 +194,10 @@ function InstapaperManager:syncReads()
             self.storage:storeArticleMetadata(article)
         end
         logger.dbg("instapaper: Successfully synced", #articles, "articles to database")
-        return true
+        return true, nil
     else
         logger.err("instapaper: Failed to sync reads")
-        return false
+        return false, error_message
     end
 end
 
@@ -365,7 +365,7 @@ function InstapaperManager:saveThumbnailImageToFile(image_data, bookmark_id)
         lfs.mkdir(thumbnail_dir)
     end
     local thumbnail_filename = string.format("%s/%s_thumbnail.jpg", thumbnail_dir, bookmark_id)
-    
+
     local save_success, err = thumbnail_bb:writeToFile(thumbnail_filename, "jpg", 85)
     
     image_bb:free()
@@ -408,10 +408,15 @@ function InstapaperManager:downloadArticle(bookmark_id)
     end
     -- Download article text from API
     logger.dbg("instapaper: Downloading article text for:", bookmark_id)
-    local success, html_content = self.instapaper_api_manager:getArticleText(bookmark_id, self.token, self.token_secret)
+    local success, html_content, error_message = self.instapaper_api_manager:getArticleText(bookmark_id, self.token, self.token_secret)
     if not success or not html_content then
-        logger.err("instapaper: Failed to download article text:", bookmark_id)
-        return false, "Failed to download article"
+        if error_message then
+            logger.err("instapaper: Failed to download article text:", bookmark_id, ":", error_message)
+            return false, error_message
+        else 
+            logger.err("instapaper: Failed to download article text:", bookmark_id)
+            return false, "Failed to download article"
+        end
     end
     -- If the HTML does not contain a <body> tag, wrap it
     if not html_content:find("<body", 1, true) then
@@ -473,14 +478,14 @@ function InstapaperManager:archiveArticle(bookmark_id)
         return false
     end
     logger.dbg("instapaper: Archiving article:", bookmark_id)
-    local success = self.instapaper_api_manager:archiveArticle(bookmark_id, self.token, self.token_secret)
+    local success, error_message = self.instapaper_api_manager:archiveArticle(bookmark_id, self.token, self.token_secret)
     if success then
         self.storage:updateArticleStatus(bookmark_id, "archived", true)
         logger.dbg("instapaper: Successfully archived article:", bookmark_id)
-        return true
+        return true, nil
     else
         logger.err("instapaper: Failed to archive article:", bookmark_id)
-        return false
+        return false, error_message
     end
 end
 
@@ -490,14 +495,14 @@ function InstapaperManager:favoriteArticle(bookmark_id)
         return false
     end
     logger.dbg("instapaper: Favoriting article:", bookmark_id)
-    local success = self.instapaper_api_manager:favoriteArticle(bookmark_id, self.token, self.token_secret)
+    local success, error_message = self.instapaper_api_manager:favoriteArticle(bookmark_id, self.token, self.token_secret)
     if success then
         self.storage:updateArticleStatus(bookmark_id, "starred", true)
         logger.dbg("instapaper: Successfully favorited article:", bookmark_id)
-        return true
+        return true, nil
     else
         logger.err("instapaper: Failed to favorite article:", bookmark_id)
-        return false
+        return false, error_message
     end
 end
 
@@ -507,14 +512,14 @@ function InstapaperManager:unfavoriteArticle(bookmark_id)
         return false
     end
     logger.dbg("instapaper: Unfavoriting article:", bookmark_id)
-    local success = self.instapaper_api_manager:unfavoriteArticle(bookmark_id, self.token, self.token_secret)
+    local success, error_message = self.instapaper_api_manager:unfavoriteArticle(bookmark_id, self.token, self.token_secret)
     if success then
         self.storage:updateArticleStatus(bookmark_id, "starred", false)
         logger.dbg("instapaper: Successfully unfavorited article:", bookmark_id)
-        return true
+        return true, nil
     else
         logger.err("instapaper: Failed to unfavorite article:", bookmark_id)
-        return false
+        return false, error_message
     end
 end
 

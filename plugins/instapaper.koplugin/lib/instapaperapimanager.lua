@@ -7,6 +7,7 @@ local http = require("socket.http")
 local ltn12 = require("ltn12")
 local socket = require("socket")
 local socketutil = require("socketutil")
+local JSON = require("json")
 
 local InstapaperAPIManager = {}
 
@@ -221,7 +222,12 @@ function InstapaperAPIManager:generateOAuthParams(additional_params)
 end
 
 -- Generic HTTP request executor
-function InstapaperAPIManager:executeRequest(request)    
+local function executeRequest(request)
+    if not NetworkMgr:isOnline() then
+        
+        return false,{}, "Your ereader is not currently online. Please connect to wifi and try again."
+    end
+
     -- Make the request
     local sink = {}
     socketutil:set_timeout(10, 30)
@@ -238,11 +244,43 @@ function InstapaperAPIManager:executeRequest(request)
     
     local body = table.concat(sink)
     
-    if code == 200 then
-        return true, body
+    if code >= 200 and code < 300 then
+        return true, body, nil
     else
+        local error_message = nil
+
         logger.err("instapaper: Request failed with code:", code, "response:", body)
-        return false, body
+        if body then
+            local decodesuccess, output = pcall(JSON.decode, body)
+
+            if decodesuccess then
+                for _, item in ipairs(output) do
+                    if item.type == "error" then
+                        if item.message and #item.message > 0 then
+                            error_message = item.message
+                        end
+                    end
+                end
+            end
+
+            if not error_message then
+                if type(code) == "string" then
+                    error_message = code
+                elseif type(code) == "number" then
+                    if code == 401 then
+                        error_message = "Authentication failed, check your username and password and try again."
+                    else
+                        error_message = "There is a problem with the server, please try again later." 
+                    end
+                else
+                    error_message = "Unknown error"
+                end
+            end
+
+            return false, body, error_message
+        else 
+            return false, {}, error_message
+        end
     end
 end
 
@@ -257,7 +295,7 @@ function InstapaperAPIManager:authenticate(username, password)
     
     -- Build and execute request
     local request = self:buildOAuthRequest("POST", self.ACCESS_TOKEN_URL, authorization_params, nil)
-    local success, body = self:executeRequest(request)
+    local success, body, error_message = executeRequest(request)
     
     if success then        
         -- Parse the response which contains the access token and secret
@@ -267,13 +305,13 @@ function InstapaperAPIManager:authenticate(username, password)
         end
         
         if response_params.oauth_token and response_params.oauth_token_secret then
-            return true, response_params
+            return true, response_params, nil
         else
             logger.err("instapaperAuthenticator: Missing OAuth tokens in response")
-            return false, nil
+            return false, {}, "Missing OAuth tokens in response"
         end
     else
-        return false, nil
+        return false, {}, error_message
     end
 end
 
@@ -285,11 +323,9 @@ function InstapaperAPIManager:getArticles(oauth_token, oauth_token_secret)
     
     -- Build and execute request
     local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/list", params, oauth_token_secret)
-    local success, body = self:executeRequest(request)
+    local success, body, error_message = executeRequest(request)
     
     if success then
-        -- Parse JSON response
-        local JSON = require("json")
         local success, output = pcall(JSON.decode, body)
         
         if success and output then
@@ -301,12 +337,12 @@ function InstapaperAPIManager:getArticles(oauth_token, oauth_token_secret)
                     --meta and user objects… just ignore them for now
                 end
             end
-            return true, articles
+            return true, articles, nil
         else
-            return false, nil
+            return false, {}, "Failed to parse response"
         end
     else
-        return false, nil
+        return false, {}, error_message
     end
 end
 
@@ -319,7 +355,15 @@ function InstapaperAPIManager:getArticleText(bookmark_id, oauth_token, oauth_tok
     
     -- Build and execute request (POST with all params in signature)
     local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/get_text", params, oauth_token_secret)
-    local success, body = self:executeRequest(request)
+    local success, body, error_message = executeRequest(request)
+    
+    if success then
+        return true, body, nil
+    else
+        return false, {}, error_message
+    end
+end
+
     
     if success then
         return true, body
@@ -337,12 +381,12 @@ function InstapaperAPIManager:archiveArticle(bookmark_id, oauth_token, oauth_tok
     
     -- Build and execute request
     local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/archive", params, oauth_token_secret)
-    local success, body = self:executeRequest(request)
+    local success, body, error_message = executeRequest(request)
     
     if success then
-        return true
+        return true, nil
     else
-        return false
+        return false, error_message
     end
 end
 
@@ -355,12 +399,12 @@ function InstapaperAPIManager:favoriteArticle(bookmark_id, oauth_token, oauth_to
     
     -- Build and execute request
     local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/star", params, oauth_token_secret)
-    local success, body = self:executeRequest(request)
+    local success, body, error_message = executeRequest(request)
     
     if success then
-        return true
+        return true, nil
     else
-        return false
+        return false, error_message
     end
 end
 
@@ -373,12 +417,12 @@ function InstapaperAPIManager:unfavoriteArticle(bookmark_id, oauth_token, oauth_
     
     -- Build and execute request
     local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/unstar", params, oauth_token_secret)
-    local success, body = self:executeRequest(request)
+    local success, body, error_message = executeRequest(request)
     
     if success then
-        return true
+        return true, nil
     else
-        return false
+        return false, error_message
     end
 end
 

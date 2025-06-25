@@ -65,6 +65,7 @@ end
 function Instapaper:init()
     self.uimanager = InstapaperUIManager:new()
     self.instapaperManager = InstapaperManager:new()
+    
     if self.ui and self.ui.menu then
         self.ui.menu:registerToMainMenu(self)    
     end
@@ -140,23 +141,24 @@ function Instapaper:showLoginDialog()
                             return
                         end
                         
-                        UIManager:close(self.login_dialog)
                         
                         -- Show loading message
-                        local info = InfoMessage:new{ text = _("Authenticating") }
+                        local info = InfoMessage:new{ text = _("Logging in...") }
                         UIManager:show(info)
                         
                         -- Perform authentication
-                        local success = self.instapaperManager:authenticate(username, password)
+                        local success, error_message = self.instapaperManager:authenticate(username, password)
 
                         UIManager:close(info)
 
                         if success then
+                            UIManager:close(self.login_dialog)
+
                             self.instapaperManager:syncReads()
                             self:showArticles()
                         else 
                             UIManager:show(ConfirmBox:new{
-                                text = _("Authentication failed. Please check your username and password."),
+                                text = _("Could not log in: " .. error_message),
                                 ok_text = _("OK"),
                             })
                         end
@@ -479,7 +481,7 @@ function Instapaper:showMenu()
                     UIManager:show(info)
                     
                     -- Perform sync
-                    local success = self.instapaperManager:syncReads()
+                    local success, error_message = self.instapaperManager:syncReads()
                     
                     UIManager:close(info)
                     
@@ -492,7 +494,7 @@ function Instapaper:showMenu()
                         self:showArticles()
                     else
                         UIManager:show(ConfirmBox:new{
-                            text = _("Sync failed. Please try again."),
+                            text = _("Sync failed: " .. error_message),
                             ok_text = _("OK"),
                         })
                     end
