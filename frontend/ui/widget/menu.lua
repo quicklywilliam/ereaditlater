@@ -891,7 +891,7 @@ function Menu:init()
         dimen = self.inner_dimen:copy(),
         self.content_group,
         page_return,
-        footer,
+        self.page_num > 1 and footer or nil,
     }
 
     self[1] = FrameContainer:new{

@@ -458,6 +458,7 @@ function Instapaper:showMenu()
         title = _("Settings"),
         width = Screen:getWidth() * 0.8,
         height = Screen:getHeight() * 0.8,
+        is_enable_shortcut = false,
         item_table = {
             {
                 text = sync_string,
