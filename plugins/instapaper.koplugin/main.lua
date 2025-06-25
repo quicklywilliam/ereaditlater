@@ -516,7 +516,7 @@ function Instapaper:showMenu()
                 end,
             },
             {
-                text = _("Log out (" .. (self.instapaperManager.username or "unknown user") .. ")"),
+                text = _("Log out (" .. (self.instapaperManager.instapaper_api_manager.username or "unknown user") .. ")"),
                 callback = function()
                     UIManager:show(ConfirmBox:new{
                         text = _("Logout of Instapaper?"),
