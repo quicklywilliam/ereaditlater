@@ -112,17 +112,42 @@ function InstapaperManager:syncReads()
     
     logger.dbg("instapaper: Syncing reads from Instapaper...")
     
-    local success, articles, error_message = self.instapaper_api_manager:getArticles()
+    local existing_bookmark_ids = self.storage:getAllBookmarkIds()
+    logger.dbg("instapaper: Found", #existing_bookmark_ids, "existing articles in database")
     
-    if success and articles then
-        -- Store articles in database
-        for _, article in ipairs(articles) do
-            self.storage:storeArticleMetadata(article)
+    -- Call API with 'have' parameter to get new articles and deleted IDs
+    -- The 'have' parameter tells Instapaper which articles we already have,
+    -- so it only returns new articles and a list of deleted article IDs
+    local success, articles, deleted_ids, error_message = self.instapaper_api_manager:getArticles(200, existing_bookmark_ids)
+    
+    if success then
+        local new_count = 0
+        local deleted_count = 0
+        
+        -- Store new articles in database
+        if articles then
+            for _, article in ipairs(articles) do
+                self.storage:storeArticleMetadata(article)
+                new_count = new_count + 1
+            end
         end
-        logger.dbg("instapaper: Successfully synced", #articles, "articles to database")
+        
+        -- Handle deleted articles - remove them from our local database
+        if deleted_ids and #deleted_ids > 0 then
+            for _, bookmark_id in ipairs(deleted_ids) do
+                local delete_success = self.storage:deleteArticle(bookmark_id)
+                if delete_success then
+                    deleted_count = deleted_count + 1
+                else
+                    logger.warn("instapaper: Failed to delete article:", bookmark_id)
+                end
+            end
+        end
+        
+        logger.dbg("instapaper: Successfully synced", new_count, "new articles, deleted", deleted_count, "articles")
         return true, nil
     else
-        logger.err("instapaper: Failed to sync reads")
+        logger.err("instapaper: Failed to sync reads:", error_message)
         return false, error_message
     end
 end

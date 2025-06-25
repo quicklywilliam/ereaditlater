@@ -478,7 +478,7 @@ end
 
 function Instapaper:showMenu()
     local last_sync = self.instapaperManager:getLastSyncTime()
-    local sync_string = "Never"
+    local sync_string = "Sync"
     if last_sync then
         local sync_time = os.date("%m-%d %H:%M", tonumber(last_sync))
         sync_string = ("Sync (last: " .. sync_time .. ")")

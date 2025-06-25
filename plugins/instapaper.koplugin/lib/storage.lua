@@ -439,6 +439,76 @@ function Storage:getArticles()
     return articles
 end
 
+-- Get all bookmark IDs from the database
+function Storage:getAllBookmarkIds()
+    self:openDB()
+    
+    local stmt = self.db_conn:prepare([[
+        SELECT bookmark_id FROM articles
+    ]])
+    
+    local bookmark_ids = {}
+    local row = stmt:reset():step()
+    while row do
+        table.insert(bookmark_ids, row[1])
+        row = stmt:step()
+    end
+    
+    self:closeDB()
+    logger.dbg("Instapaper: Retrieved", #bookmark_ids, "bookmark IDs from database")
+    return bookmark_ids
+end
+
+-- Delete article by bookmark_id
+function Storage:deleteArticle(bookmark_id)
+    self:openDB()
+    
+    -- Get the HTML filename before deleting
+    local stmt = self.db_conn:prepare([[
+        SELECT html_filename FROM articles WHERE bookmark_id = ?
+    ]])
+    
+    local row = stmt:reset():bind(bookmark_id):step()
+    local html_filename = row and row[1]
+    
+    -- Delete from database
+    local delete_stmt = self.db_conn:prepare([[
+        DELETE FROM articles WHERE bookmark_id = ?
+    ]])
+    
+    local ok, err = pcall(function()
+        delete_stmt:reset():bind(bookmark_id):step()
+    end)
+    
+    if not ok then
+        logger.err("Instapaper: Failed to delete article from database:", err)
+        self:closeDB()
+        return false, err
+    end
+    
+    -- Delete HTML file if it exists
+    if html_filename then
+        local filepath = self.articles_dir .. "/" .. html_filename
+        local success, err = os.remove(filepath)
+        if not success and err ~= "No such file or directory" then
+            logger.warn("Instapaper: Failed to delete HTML file:", filepath, err)
+        end
+    end
+    
+    -- Delete thumbnail if it exists
+    local DataStorage = require("datastorage")
+    local thumbnail_path = string.format("%s/instapaper/thumbnails/%s_thumbnail.jpg", 
+        DataStorage:getDataDir(), bookmark_id)
+    local success, err = os.remove(thumbnail_path)
+    if not success and err ~= "No such file or directory" then
+        logger.warn("Instapaper: Failed to delete thumbnail:", thumbnail_path, err)
+    end
+    
+    self:closeDB()
+    logger.dbg("Instapaper: Deleted article with bookmark_id:", bookmark_id)
+    return true
+end
+
 -- Clear all articles from database and filesystem
 function Storage:clearAll()
     self:openDB()
@@ -498,6 +568,7 @@ function Storage:updateArticleStatus(bookmark_id, status_type, value)
         logger.err("Instapaper: Unknown status_type for updateArticleStatus: " .. tostring(status_type))
         return false, "Unknown status_type: " .. tostring(status_type)
     end
+    
     local stmt = self.db_conn:prepare(string.format(
         "UPDATE articles SET %s = ?, time_updated = ? WHERE bookmark_id = ?",
         field

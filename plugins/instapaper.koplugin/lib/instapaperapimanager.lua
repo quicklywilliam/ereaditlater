@@ -391,15 +391,27 @@ function InstapaperAPIManager:authenticate(username, password)
     end
 end
 
-function InstapaperAPIManager:getArticles()    
+function InstapaperAPIManager:getArticles(limit, have)    
     if not self:isAuthenticated() then
         return false, {}, "Not authenticated"
     end
     
     -- Generate OAuth parameters with API-specific additions
     local params = self:generateOAuthParams({
-        oauth_token = self.oauth_token
+        oauth_token = self.oauth_token,
+        limit = limit or 100
     })
+    
+    -- Add 'have' parameter if provided
+    if have and #have > 0 then
+        local have_string = ""
+        for _, id in ipairs(have) do
+            have_string = have_string .. string.format("%d,", id)
+        end
+        params.have = have_string
+    else 
+        params.have = ""
+    end
     
     -- Build and execute request
     local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/list", params, self.oauth_token_secret)
@@ -408,21 +420,39 @@ function InstapaperAPIManager:getArticles()
     if success then
         local success, output = pcall(JSON.decode, body)
         
+        
         if success and output then
             local articles = {}
+            local deleted_ids = {}
             for _, item in ipairs(output) do
+                logger.dbg("instapaper: item.type", item.type)
                 if item.type == "bookmark" then
                     table.insert(articles, item)
-                else
-                    --meta and user objects… just ignore them for now
+                elseif item.type == "meta" then
+                    logger.dbg("instapaper: deleted_ids", item.delete_ids)
+                    -- Despite API docs, Instapaper currently returns deleted_ids as a comma-separated string of deleted IDs
+                    if type(item.delete_ids) == "string" and item.delete_ids ~= "" then
+                        for id_str in item.delete_ids:gmatch("([^,]+)") do
+                            local id = tonumber(id_str:match("^%s*(.-)%s*$")) -- trim whitespace and convert to number
+                            if id then
+                                table.insert(deleted_ids, id)
+                            end
+                        end
+                    elseif type(item.delete_ids) == "table" then
+                        -- If the API ever starts returning a table, just use it directly
+                        deleted_ids = item.delete_ids
+                    end
+                else 
+                    --user object… just ignore them for now
                 end
             end
-            return true, articles, nil
+            
+            return true, articles, deleted_ids, nil
         else
-            return false, {}, "Failed to parse response"
+            return false, {}, {},  "Failed to parse response"
         end
     else
-        return false, {}, error_message
+        return false, {}, {}, error_message
     end
 end
 
