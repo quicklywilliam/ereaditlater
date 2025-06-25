@@ -419,10 +419,10 @@ function Instapaper:showArticles()
     -- Forward key events for dev shortcuts and page navigation
     self.list_view.onKeyPress = function(widget, key, mods, is_repeat)
         -- Handle page navigation
-        if key.key == "Left" or key.key == "Up" then
+        if key.key == "Left" or key.key == "Up" or key.key == "RPgBack" then
             list_view:prevPage()
             return true
-        elseif key.key == "Right" or key.key == "Down" then
+        elseif key.key == "Right" or key.key == "Down" or key.key == "RPgFwd" then
             list_view:nextPage()
             return true
         end
