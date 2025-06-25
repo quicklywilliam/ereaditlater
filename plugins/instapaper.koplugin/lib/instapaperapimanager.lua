@@ -8,8 +8,40 @@ local ltn12 = require("ltn12")
 local socket = require("socket")
 local socketutil = require("socketutil")
 local JSON = require("json")
+local DataStorage = require("datastorage")
+local LuaSettings = require("luasettings")
 
 local InstapaperAPIManager = {}
+
+-- Settings storage is currently used for auth credentials
+local function getSettings()
+    local settings = LuaSettings:open(DataStorage:getSettingsDir().."/instapaper.lua")
+    settings:readSetting("instapaper", {})
+    return settings
+end
+
+-- Generic settings methods
+local function getSetting(key, default)
+    local settings = getSettings()
+    local data = settings.data.instapaper or {}
+    return data[key] ~= nil and data[key] or default
+end
+
+local function setSetting(key, value)
+    local settings = getSettings()
+    local data = settings.data.instapaper or {}
+    data[key] = value
+    settings:saveSetting("instapaper", data)
+    settings:flush()
+end
+
+local function delSetting(key)
+    local settings = getSettings()
+    local data = settings.data.instapaper or {}
+    data[key] = nil
+    settings:saveSetting("instapaper", data)
+    settings:flush()
+end
 
 function InstapaperAPIManager:new()
     local api_manager = {}
@@ -27,10 +59,52 @@ function InstapaperAPIManager:new()
     api_manager.api_base = "https://www.instapaper.com"
     api_manager.ACCESS_TOKEN_URL = api_manager.api_base .. "/api/1/oauth/access_token"
     
+    -- Load stored user tokens
+    api_manager.oauth_token, api_manager.oauth_token_secret = self:loadTokens()
+    api_manager.username = self:loadUsername()
+    
     setmetatable(api_manager, self)
     self.__index = self
     
     return api_manager
+end
+
+-- Token management methods
+function InstapaperAPIManager:loadTokens()
+    return getSetting("oauth_token"), getSetting("oauth_token_secret")
+end
+
+function InstapaperAPIManager:loadUsername()
+    return getSetting("username")
+end
+
+function InstapaperAPIManager:saveTokens(oauth_token, oauth_token_secret)
+    setSetting("oauth_token", oauth_token)
+    setSetting("oauth_token_secret", oauth_token_secret)
+    self.oauth_token = oauth_token
+    self.oauth_token_secret = oauth_token_secret
+end
+
+function InstapaperAPIManager:saveUsername(username)
+    setSetting("username", username)
+    self.username = username
+end
+
+function InstapaperAPIManager:clearTokens()
+    delSetting("oauth_token")
+    delSetting("oauth_token_secret")
+    delSetting("username")
+    self.oauth_token = nil
+    self.oauth_token_secret = nil
+    self.username = nil
+end
+
+function InstapaperAPIManager:isAuthenticated()
+    return self.oauth_token ~= nil and self.oauth_token_secret ~= nil
+end
+
+function InstapaperAPIManager:getUsername()
+    return self.username
 end
 
 -- Load API keys from file
@@ -305,6 +379,8 @@ function InstapaperAPIManager:authenticate(username, password)
         end
         
         if response_params.oauth_token and response_params.oauth_token_secret then
+            self:saveTokens(response_params.oauth_token, response_params.oauth_token_secret)
+            self:saveUsername(username)
             return true, response_params, nil
         else
             logger.err("instapaperAuthenticator: Missing OAuth tokens in response")
@@ -315,14 +391,18 @@ function InstapaperAPIManager:authenticate(username, password)
     end
 end
 
-function InstapaperAPIManager:getArticles(oauth_token, oauth_token_secret)    
+function InstapaperAPIManager:getArticles()    
+    if not self:isAuthenticated() then
+        return false, {}, "Not authenticated"
+    end
+    
     -- Generate OAuth parameters with API-specific additions
     local params = self:generateOAuthParams({
-        oauth_token = oauth_token
+        oauth_token = self.oauth_token
     })
     
     -- Build and execute request
-    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/list", params, oauth_token_secret)
+    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/list", params, self.oauth_token_secret)
     local success, body, error_message = executeRequest(request)
     
     if success then
@@ -346,15 +426,19 @@ function InstapaperAPIManager:getArticles(oauth_token, oauth_token_secret)
     end
 end
 
-function InstapaperAPIManager:getArticleText(bookmark_id, oauth_token, oauth_token_secret)
+function InstapaperAPIManager:getArticleText(bookmark_id)
+    if not self:isAuthenticated() then
+        return false, {}, "Not authenticated"
+    end
+    
     -- Generate OAuth parameters including bookmark_id for signature
     local params = self:generateOAuthParams({
-        oauth_token = oauth_token,
+        oauth_token = self.oauth_token,
         bookmark_id = tostring(bookmark_id)
     })
     
     -- Build and execute request (POST with all params in signature)
-    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/get_text", params, oauth_token_secret)
+    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/get_text", params, self.oauth_token_secret)
     local success, body, error_message = executeRequest(request)
     
     if success then
@@ -364,13 +448,17 @@ function InstapaperAPIManager:getArticleText(bookmark_id, oauth_token, oauth_tok
     end
 end
 
-function InstapaperAPIManager:addArticle(url, oauth_token, oauth_token_secret)
+function InstapaperAPIManager:addArticle(url)
+    if not self:isAuthenticated() then
+        return false, "Not authenticated"
+    end
+    
     local params = self:generateOAuthParams({
-        oauth_token = oauth_token,
+        oauth_token = self.oauth_token,
         url = url
     })
    
-    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/add", params, oauth_token_secret)
+    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/add", params, self.oauth_token_secret)
     local success, body, error_message = executeRequest(request)
     
     if success then
@@ -380,15 +468,19 @@ function InstapaperAPIManager:addArticle(url, oauth_token, oauth_token_secret)
     end
 end
 
-function InstapaperAPIManager:archiveArticle(bookmark_id, oauth_token, oauth_token_secret)    
+function InstapaperAPIManager:archiveArticle(bookmark_id)    
+    if not self:isAuthenticated() then
+        return false, "Not authenticated"
+    end
+    
     -- Generate OAuth parameters including bookmark_id for signature
     local params = self:generateOAuthParams({
-        oauth_token = oauth_token,
+        oauth_token = self.oauth_token,
         bookmark_id = tostring(bookmark_id)
     })
     
     -- Build and execute request
-    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/archive", params, oauth_token_secret)
+    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/archive", params, self.oauth_token_secret)
     local success, body, error_message = executeRequest(request)
     
     if success then
@@ -398,15 +490,19 @@ function InstapaperAPIManager:archiveArticle(bookmark_id, oauth_token, oauth_tok
     end
 end
 
-function InstapaperAPIManager:favoriteArticle(bookmark_id, oauth_token, oauth_token_secret)    
+function InstapaperAPIManager:favoriteArticle(bookmark_id)    
+    if not self:isAuthenticated() then
+        return false, "Not authenticated"
+    end
+    
     -- Generate OAuth parameters including bookmark_id for signature
     local params = self:generateOAuthParams({
-        oauth_token = oauth_token,
+        oauth_token = self.oauth_token,
         bookmark_id = tostring(bookmark_id)
     })
     
     -- Build and execute request
-    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/star", params, oauth_token_secret)
+    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/star", params, self.oauth_token_secret)
     local success, body, error_message = executeRequest(request)
     
     if success then
@@ -416,15 +512,19 @@ function InstapaperAPIManager:favoriteArticle(bookmark_id, oauth_token, oauth_to
     end
 end
 
-function InstapaperAPIManager:unfavoriteArticle(bookmark_id, oauth_token, oauth_token_secret)    
+function InstapaperAPIManager:unfavoriteArticle(bookmark_id)    
+    if not self:isAuthenticated() then
+        return false, "Not authenticated"
+    end
+    
     -- Generate OAuth parameters including bookmark_id for signature
     local params = self:generateOAuthParams({
-        oauth_token = oauth_token,
+        oauth_token = self.oauth_token,
         bookmark_id = tostring(bookmark_id)
     })
     
     -- Build and execute request
-    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/unstar", params, oauth_token_secret)
+    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/unstar", params, self.oauth_token_secret)
     local success, body, error_message = executeRequest(request)
     
     if success then

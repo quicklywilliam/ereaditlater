@@ -22,21 +22,14 @@ function InstapaperManager:new()
     setmetatable(o, self)
     self.__index = self
     
-    self.instapaper_api_manager = InstapaperAPIManager:new()
+    o.instapaper_api_manager = InstapaperAPIManager:new()
     
-    -- Initialize with stored tokens and username
-    o.token, o.token_secret = o:loadTokens()
-    o.username = o:loadUsername()
-    o.is_authenticated = o:isAuthenticated()
-    
-    if o.is_authenticated then
-        logger.dbg("instapaper: Loaded stored tokens")
-    else
-        logger.dbg("instapaper: No stored tokens found, not authenticated")
-    end
 
-    self.storage = Storage:new()
-    self.storage:init()
+    
+
+
+    o.storage = Storage:new()
+    o.storage:init()
     
     return o
 end
@@ -72,41 +65,12 @@ function InstapaperManager:delSetting(key)
     settings:flush()
 end
 
--- Token-specific methods (using the generic methods)
-function InstapaperManager:loadTokens()
-    return self:getSetting("oauth_token"), self:getSetting("oauth_token_secret")
-end
-
-function InstapaperManager:loadUsername()
-    return self:getSetting("username")
-end
-
-function InstapaperManager:saveTokens(oauth_token, oauth_token_secret)
-    self:setSetting("oauth_token", oauth_token)
-    self:setSetting("oauth_token_secret", oauth_token_secret)
-end
-
-function InstapaperManager:saveUsername(username)
-    self:setSetting("username", username)
-end
-
-function InstapaperManager:clearTokens()
-    self:delSetting("oauth_token")
-    self:delSetting("oauth_token_secret")
-    self:delSetting("username")
-end
-
 function InstapaperManager:isAuthenticated()
-    local oauth_token, oauth_token_secret = self:loadTokens()
-    return oauth_token ~= nil and oauth_token_secret ~= nil
+    return self.instapaper_api_manager:isAuthenticated()
 end
 
 function InstapaperManager:logout()
-    self:clearTokens()
-    self.token = nil
-    self.token_secret = nil
-    self.is_authenticated = false
-    self.username = nil
+    self.instapaper_api_manager:clearTokens()
     -- Clear database storage
     self.storage:clearAll()
     
@@ -154,25 +118,16 @@ function InstapaperManager:authenticate(username, password)
         return false
     end
     
-    self.username = username
-    
     logger.dbg("instapaper: Starting OAuth xAuth authentication for user:", username)
     
     local success, params, error_message = self.instapaper_api_manager:authenticate(username, password)
     
     if success and params then
         logger.dbg("instapaper: Authentication successful")
-        self.token = params.oauth_token
-        self.token_secret = params.oauth_token_secret
-        self.is_authenticated = true
-        
-        self:saveTokens(self.token, self.token_secret)
-        self:saveUsername(username)
         
         return true, nil
     else
         logger.err("instapaper: Authentication failed:", error_message)
-        self.is_authenticated = false
         
         return false, error_message
     end
@@ -186,7 +141,7 @@ function InstapaperManager:syncReads()
     
     logger.dbg("instapaper: Syncing reads from Instapaper...")
     
-    local success, articles, error_message = self.instapaper_api_manager:getArticles(self.token, self.token_secret)
+    local success, articles, error_message = self.instapaper_api_manager:getArticles()
     
     if success and articles then
         -- Store articles in database
@@ -388,7 +343,7 @@ function InstapaperManager:addArticle(url)
     end
 
     logger.dbg("instapaper: Adding article:", url)
-    local success, error_message = self.instapaper_api_manager:addArticle(url, self.token, self.token_secret)
+    local success, error_message = self.instapaper_api_manager:addArticle(url)
     if success then
         logger.dbg("instapaper: Successfully added article:", url)
         return true, nil
@@ -425,7 +380,7 @@ function InstapaperManager:downloadArticle(bookmark_id)
     end
     -- Download article text from API
     logger.dbg("instapaper: Downloading article text for:", bookmark_id)
-    local success, html_content, error_message = self.instapaper_api_manager:getArticleText(bookmark_id, self.token, self.token_secret)
+    local success, html_content, error_message = self.instapaper_api_manager:getArticleText(bookmark_id)
     if not success or not html_content then
         if error_message then
             logger.err("instapaper: Failed to download article text:", bookmark_id, ":", error_message)
@@ -495,7 +450,7 @@ function InstapaperManager:archiveArticle(bookmark_id)
         return false
     end
     logger.dbg("instapaper: Archiving article:", bookmark_id)
-    local success, error_message = self.instapaper_api_manager:archiveArticle(bookmark_id, self.token, self.token_secret)
+    local success, error_message = self.instapaper_api_manager:archiveArticle(bookmark_id)
     if success then
         self.storage:updateArticleStatus(bookmark_id, "archived", true)
         logger.dbg("instapaper: Successfully archived article:", bookmark_id)
@@ -512,7 +467,7 @@ function InstapaperManager:favoriteArticle(bookmark_id)
         return false
     end
     logger.dbg("instapaper: Favoriting article:", bookmark_id)
-    local success, error_message = self.instapaper_api_manager:favoriteArticle(bookmark_id, self.token, self.token_secret)
+    local success, error_message = self.instapaper_api_manager:favoriteArticle(bookmark_id)
     if success then
         self.storage:updateArticleStatus(bookmark_id, "starred", true)
         logger.dbg("instapaper: Successfully favorited article:", bookmark_id)
@@ -529,7 +484,7 @@ function InstapaperManager:unfavoriteArticle(bookmark_id)
         return false
     end
     logger.dbg("instapaper: Unfavoriting article:", bookmark_id)
-    local success, error_message = self.instapaper_api_manager:unfavoriteArticle(bookmark_id, self.token, self.token_secret)
+    local success, error_message = self.instapaper_api_manager:unfavoriteArticle(bookmark_id)
     if success then
         self.storage:updateArticleStatus(bookmark_id, "starred", false)
         logger.dbg("instapaper: Successfully unfavorited article:", bookmark_id)
