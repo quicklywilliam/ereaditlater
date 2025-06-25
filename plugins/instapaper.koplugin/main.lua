@@ -572,7 +572,11 @@ end
 function Instapaper:onKeyPress(key, mods, is_repeat)
 
     if Device:isEmulator() and (key.key == "F4") then
-        logger.dbg("Instapaper: onKeyPress F4")
+        for l, v in pairs(key.modifiers) do
+            if v then
+                return false
+            end
+        end
         local current = Screen:getRotationMode()
         local new_mode = (current + 1) % 4
         self.list_view.onSetRotationMode(self.list_view, new_mode)
