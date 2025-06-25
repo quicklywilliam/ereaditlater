@@ -372,7 +372,7 @@ function InstapaperManager:saveThumbnailImageToFile(image_data, bookmark_id)
     cropped_bb:free()
     thumbnail_bb:free()
         
-    if success then
+    if save_success then
         logger.dbg("instapaper: Saved thumbnail:", thumbnail_filename)
         return true
     else
