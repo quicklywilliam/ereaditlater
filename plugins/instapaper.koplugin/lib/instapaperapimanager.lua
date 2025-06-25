@@ -364,11 +364,19 @@ function InstapaperAPIManager:getArticleText(bookmark_id, oauth_token, oauth_tok
     end
 end
 
+function InstapaperAPIManager:addArticle(url, oauth_token, oauth_token_secret)
+    local params = self:generateOAuthParams({
+        oauth_token = oauth_token,
+        url = url
+    })
+   
+    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/add", params, oauth_token_secret)
+    local success, body, error_message = executeRequest(request)
     
     if success then
-        return true, body
+        return true, nil
     else
-        return false, nil
+        return false, error_message
     end
 end
 

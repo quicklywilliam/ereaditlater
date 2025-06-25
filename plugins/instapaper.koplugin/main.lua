@@ -35,6 +35,9 @@ local Geom = require("ui/geometry")
 local TitleBar = require("ui/widget/titlebar")
 local OverlapGroup = require("ui/widget/overlapgroup")
 local Button = require("ui/widget/button")
+local Event = require("ui/event")
+local NetworkMgr = require("ui/network/manager")
+
 
 local Instapaper = WidgetContainer:extend{
     name = "instapaper",
@@ -68,6 +71,18 @@ function Instapaper:init()
     
     if self.ui and self.ui.menu then
         self.ui.menu:registerToMainMenu(self)    
+    end
+
+    if self.ui and self.ui.link then
+        self.ui.link:addToExternalLinkDialog("instapaper", function(this, link_url)
+            return {
+                text = _("Save to Instapaper"),
+                callback = function()
+                    UIManager:close(this.external_link_dialog)
+                    this.ui:handleEvent(Event:new("AddToInstapaper", link_url))
+                end,
+            }
+        end)
     end
 end
 
@@ -589,6 +604,34 @@ function Instapaper:showArticleContent(article)
         -- update the article list to show the downloaded article
         self:showArticles()
     end)
+end
+
+--- Handler for our button in the ReaderUI's link menu
+function Instapaper:onAddToInstapaper(url)
+    if not NetworkMgr:isOnline() then
+        -- currently there is no way to add an article to an offline queue, so we just show a message
+        UIManager:show(InfoMessage:new{
+            text = "Your ereader is currently offline. Connect to wifi and try again.",
+            icon = "wifi.open.0",
+        })
+        return
+    end
+
+    local success, error_message = self.instapaperManager:addArticle(url)
+
+    if success then
+        UIManager:show(InfoMessage:new{
+            text = "Saved to Instapaper",
+            icon = "check",
+            timeout = 1,
+        })
+    else
+        UIManager:show(InfoMessage:new{
+            text = "Error saving to Instapaper: " .. error_message,
+            icon = "notice-error",
+        })
+    end
+    return true
 end
 
 function Instapaper:onKeyPress(key, mods, is_repeat)

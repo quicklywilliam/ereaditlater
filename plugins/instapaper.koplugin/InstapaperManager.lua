@@ -381,6 +381,23 @@ function InstapaperManager:saveThumbnailImageToFile(image_data, bookmark_id)
     end
 end
 
+function InstapaperManager:addArticle(url)
+    if not self:isAuthenticated() then
+        logger.err("instapaper: Cannot add article - not authenticated")
+        return false, "Not authenticated"
+    end
+
+    logger.dbg("instapaper: Adding article:", url)
+    local success, error_message = self.instapaper_api_manager:addArticle(url, self.token, self.token_secret)
+    if success then
+        logger.dbg("instapaper: Successfully added article:", url)
+        return true, nil
+    else
+        logger.err("instapaper: Failed to add article:", url)
+        return false, error_message
+    end
+end
+
 function InstapaperManager:downloadArticle(bookmark_id)
     if not self:isAuthenticated() then
         logger.err("instapaper: Cannot download article - not authenticated")
