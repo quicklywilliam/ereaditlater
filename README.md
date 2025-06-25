@@ -1,7 +1,7 @@
 # Eread-it-later
 
-<img src="https://github.com/user-attachments/assets/b5b5db2b-9357-4625-9b8f-fa9a692a3b7a" alt="drawing" style="width:500px;"/>
-<img src="https://github.com/user-attachments/assets/f0c72004-3f0e-4984-8537-b92983d227ca" alt="drawing" style="width:500px;"/>
+<img src="https://github.com/user-attachments/assets/b5b5db2b-9357-4625-9b8f-fa9a692a3b7a" alt="drawing" style="width:450px;"/>
+<img src="https://github.com/user-attachments/assets/f0c72004-3f0e-4984-8537-b92983d227ca" alt="drawing" style="width:450px;"/>
 
 Open source client application for read it later services (currently just Instapaper). Based on KOReader, works with Kobo/Kindle/etc.
 
