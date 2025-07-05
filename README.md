@@ -33,6 +33,19 @@ Open source client application for read it later services (currently just Instap
 
 Currently the only way to install this is to install KOReader and then manually copy over the Instapaper plugin. A better installation experience is coming.
 
+## Setting up for development
+
+In order to run the app in the emulator, you will need to your own OAUTH client keys. You can obtain these credentials by [applying for Instapaper API access](https://www.instapaper.com/api).
+
+Once you have them, create a `secrets.txt` file in ~/.config/koreader with your Instapaper API credentials:
+
+```
+instapaper_ouath_consumer_key = "your_consumer_key"
+instapaper_oauth_consumer_secret = "your_consumer_secret"
+```
+
+After this, follow the [typical steps](https://github.com/koreader/koreader/blob/master/doc/Building.md) for building and running koreader.
+
 ## Contributing
 
 This plugin is under active development. Get in touch if you'd like to contribute!
