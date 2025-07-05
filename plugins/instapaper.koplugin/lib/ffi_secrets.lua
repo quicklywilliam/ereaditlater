@@ -25,10 +25,13 @@ end
 
 -- Try to read secrets from text file
 local function try_read_text_file()
-    local secrets_path = "plugins/instapaper.koplugin/secrets.txt"
+    -- Look for secrets file in user's config directory
+    local home = os.getenv("HOME")
+    local secrets_path = home and (home .. "/.config/koreader/secrets.txt") or "plugins/instapaper.koplugin/secrets.txt"
+    
     local file = io.open(secrets_path, "r")
     if not file then
-        logger.dbg("instapaper: Could not open secrets.txt")
+        logger.dbg("instapaper: Could not open secrets.txt at " .. secrets_path)
         return nil, nil
     end
     
@@ -52,7 +55,7 @@ local function try_read_text_file()
         return nil, nil
     end
     
-    logger.dbg("instapaper: Successfully loaded secrets from text file")
+    logger.dbg("instapaper: Successfully loaded secrets from text file at " .. secrets_path)
     return consumer_key, consumer_secret
 end
 

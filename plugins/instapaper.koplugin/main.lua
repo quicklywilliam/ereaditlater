@@ -48,7 +48,9 @@ local Instapaper = WidgetContainer:extend{
 local function loadDevCredentials()
     local stored_username = ""
     local stored_password = ""
-    local secrets_path = "plugins/instapaper.koplugin/secrets.txt"
+    -- Look for secrets file in user's config directory
+    local home = os.getenv("HOME")
+    local secrets_path = home and (home .. "/.config/koreader/secrets.txt") or "plugins/instapaper.koplugin/secrets.txt"
     local file = io.open(secrets_path, "r")
     if file then
         local content = file:read("*all")
@@ -122,7 +124,7 @@ function Instapaper:checkAPIKeys()
                1. Get your Instapaper API credentials from:
                   https://www.instapaper.com/main/request_oauth_consumer_token
                
-               2. Create a file called 'secrets.txt' in the plugin directory with:
+               2. Create a file called 'secrets.txt' in ~/.config/koreader/ with:
                   "instapaper_ouath_consumer_key" = "YOUR_CONSUMER_KEY"
                   "instapaper_oauth_consumer_secret" = "YOUR_CONSUMER_SECRET"
                ]],
