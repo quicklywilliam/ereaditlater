@@ -98,11 +98,40 @@ function Instapaper:addToMainMenu(menu_items)
 end
 
 function Instapaper:showUI() 
+    if not self:checkAPIKeys() then
+        return
+    end
+    
     if self.instapaperManager:isAuthenticated() then
         self:showArticles() 
     else
         self:showLoginDialog()
     end
+end
+
+function Instapaper:checkAPIKeys()
+       -- Check if API keys are available
+       local secrets = require("lib/ffi_secrets")
+       if not secrets.has_secrets() then
+           UIManager:show(ConfirmBox:new{
+               text = [[
+               Instapaper API credentials are required but not found. This may mean that the plugin has not been compiled for your platform.
+               
+               To set up the plugin for development/testing, you can use the following method:
+               
+               1. Get your Instapaper API credentials from:
+                  https://www.instapaper.com/main/request_oauth_consumer_token
+               
+               2. Create a file called 'secrets.txt' in the plugin directory with:
+                  "instapaper_ouath_consumer_key" = "YOUR_CONSUMER_KEY"
+                  "instapaper_oauth_consumer_secret" = "YOUR_CONSUMER_SECRET"
+               ]],
+               ok_text = _("OK"),
+           })
+           return false
+       end
+
+       return true
 end
 
 function Instapaper:showLoginDialog()

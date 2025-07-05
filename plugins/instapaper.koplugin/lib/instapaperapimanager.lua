@@ -107,32 +107,13 @@ function InstapaperAPIManager:getUsername()
     return self.username
 end
 
--- Load API keys from file
+-- Load API keys with fallback support
 function InstapaperAPIManager:loadApiKeys()
-    local secrets_path = "plugins/instapaper.koplugin/secrets.txt"
-    local file = io.open(secrets_path, "r")
-    if not file then
-        logger.err("instapaper: Could not open secrets.txt")
-        return nil, nil, nil, nil
-    end
+    local secrets = require("lib/ffi_secrets")
+    local consumer_key, consumer_secret = secrets.get_secrets()
     
-    local content = file:read("*all")
-    file:close()
-    
-    local consumer_key = ""
-    local consumer_secret = ""
-    
-    -- Parse the content looking for all keys
-    for key, value in string.gmatch(content, '"([^"]+)"%s*=%s*"([^"]+)"') do
-        if key == "instapaper_ouath_consumer_key" then
-            consumer_key = value
-        elseif key == "instapaper_oauth_consumer_secret" then
-            consumer_secret = value
-        end
-    end
-    
-    if consumer_key == "" or consumer_secret == "" then
-        logger.err("instapaper: Could not find both consumer_key and consumer_secret in secrets.txt")
+    if not consumer_key or not consumer_secret then
+        logger.err("instapaper: Failed to load API keys from any source")
         return nil, nil
     end
     
