@@ -637,6 +637,10 @@ function Instapaper:showArticleContent(article)
                     dialog = ReaderUI.instance,
                     view = ReaderUI.instance.view,
                     document = ReaderUI.instance.document,
+                    refresh_callback = function()
+                        -- Refresh the Instapaper list view when returning from reader
+                        self:showArticles()
+                    end,
                 }
                 ReaderUI.instance:registerModule("instapaper", module_instance)
                 logger.dbg("Instapaper: Registered ReaderInstapaper module")

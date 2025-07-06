@@ -321,7 +321,12 @@ function ReaderInstapaper:onBackToArticles()
     -- Close current reader and return to Instapaper plugin
     self.ui:onClose()
     
-    -- Show Instapaper  list
+    -- Refresh the Instapaper list view if callback is provided
+    if self.refresh_callback then
+        UIManager:scheduleIn(0.2, function()
+            self.refresh_callback()
+        end)
+    end
 end
 
 function ReaderInstapaper:onArchiveArticle()
@@ -449,6 +454,13 @@ end
 
 function ReaderInstapaper:onClose()
     self:hideToolbar()
+    
+    -- Refresh the Instapaper list view if callback is provided
+    if self.refresh_callback then
+        UIManager:scheduleIn(0.2, function()
+            self.refresh_callback()
+        end)
+    end
 end
 
 return ReaderInstapaper 
