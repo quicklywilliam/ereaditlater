@@ -466,6 +466,13 @@ function InstapaperAPIManager:getArticles(limit, have)
             for _, item in ipairs(output) do
                 logger.dbg("instapaper: item.type", item.type)
                 if item.type == "bookmark" then
+                    if item.starred and (item.starred == 1 or item.starred == "1")  then
+                        -- instapaper API (sometimes?) returns starred as a string, which is "fun"
+                        item.starred = true
+                    else
+                        item.starred = false
+                    end
+
                     table.insert(articles, item)
                 elseif item.type == "meta" then
                     logger.dbg("instapaper: deleted_ids", item.delete_ids)
