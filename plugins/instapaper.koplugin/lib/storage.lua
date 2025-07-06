@@ -440,11 +440,11 @@ function Storage:getArticles()
 end
 
 -- Get all bookmark IDs from the database
-function Storage:getAllBookmarkIds()
+function Storage:getAllUnarchivedBookmarkIds()
     self:openDB()
-    
+
     local stmt = self.db_conn:prepare([[
-        SELECT bookmark_id FROM articles
+        SELECT bookmark_id FROM articles WHERE is_archived = 0
     ]])
     
     local bookmark_ids = {}

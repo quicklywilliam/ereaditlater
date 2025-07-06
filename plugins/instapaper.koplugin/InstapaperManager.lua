@@ -120,7 +120,7 @@ function InstapaperManager:syncReads()
         end
     end
     
-    local existing_bookmark_ids = self.storage:getAllBookmarkIds()
+    local existing_bookmark_ids = self.storage:getAllUnarchivedBookmarkIds(false)
     logger.dbg("instapaper: Found", #existing_bookmark_ids, "existing articles in database")
     
     -- Call API with 'have' parameter to get new articles and deleted IDs
