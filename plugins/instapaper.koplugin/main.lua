@@ -48,9 +48,13 @@ local Instapaper = WidgetContainer:extend{
 local function loadDevCredentials()
     local stored_username = ""
     local stored_password = ""
-    -- Look for secrets file in user's config directory
-    local home = os.getenv("HOME")
-    local secrets_path = home and (home .. "/.config/koreader/secrets.txt") or "plugins/instapaper.koplugin/secrets.txt"
+    
+    local home = "/mnt/onboard/"
+    if Device:isEmulator() then
+        home = os.getenv("HOME")
+    end
+    local secrets_path = home .. "/.config/koreader/auth.txt"
+    logger.err("instapaper: secrets_path:", secrets_path)
     local file = io.open(secrets_path, "r")
     if file then
         local content = file:read("*all")
