@@ -31,7 +31,7 @@ Open source client application for read it later services (currently just Instap
 
 ## How to Install
 
-Currently the only way to install this is to install KOReader and then manually copy over the Instapaper plugin. A better installation experience is coming.
+Download the current [release](https://github.com/quicklywilliam/ereaditlater/releases) and install using the "Manual Installation Method" detailed [here](https://github.com/koreader/koreader/wiki/Installation-on-Kobo-devices#manual-installation-method-based-on-kfmon). Note that it is not yet possible to run this project alongside KOReader – installing will replace your current KOReader install, if any.
 
 ## Setting up for development
 
