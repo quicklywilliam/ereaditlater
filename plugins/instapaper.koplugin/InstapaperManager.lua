@@ -41,8 +41,7 @@ function InstapaperManager:isAuthenticated()
 end
 
 function InstapaperManager:logout()
-    self.instapaper_api_manager:clearTokens()
-    -- Clear database storage
+    self.instapaper_api_manager:cleanAll()
     self.storage:clearAll()
     
     -- Clean up thumbnail files
@@ -111,6 +110,15 @@ function InstapaperManager:syncReads()
     end
     
     logger.dbg("instapaper: Syncing reads from Instapaper...")
+    
+    -- Process any queued offline requests first
+    local queue_errors = self.instapaper_api_manager:processQueuedRequests()
+    if #queue_errors > 0 then
+        logger.warn("instapaper: Some queued requests failed:", #queue_errors, "errors")
+        for _, error_info in ipairs(queue_errors) do
+            logger.warn("instapaper: Queued request failed:", error_info.error)
+        end
+    end
     
     local existing_bookmark_ids = self.storage:getAllBookmarkIds()
     logger.dbg("instapaper: Found", #existing_bookmark_ids, "existing articles in database")

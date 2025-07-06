@@ -65,9 +65,29 @@ function InstapaperAPIManager:new()
     
     setmetatable(api_manager, self)
     self.__index = self
+
+    -- Initialize queue
+    api_manager.queued_requests = self:loadQueue()
     
     return api_manager
 end
+
+-- Queue management functions
+function InstapaperAPIManager:getQueueSettings()
+    return LuaSettings:open(DataStorage:getSettingsDir().."/instapaper_queue.lua")
+end
+
+function InstapaperAPIManager:saveQueue(queue)
+    local settings = self:getQueueSettings()
+    settings:saveSetting("queued_requests", queue)
+    settings:flush()
+end
+
+function InstapaperAPIManager:loadQueue()
+    local settings = self:getQueueSettings()
+    return settings:readSetting("queued_requests") or {}
+end
+
 
 -- Token management methods
 function InstapaperAPIManager:loadTokens()
@@ -90,13 +110,17 @@ function InstapaperAPIManager:saveUsername(username)
     self.username = username
 end
 
-function InstapaperAPIManager:clearTokens()
+function InstapaperAPIManager:cleanAll()
     delSetting("oauth_token")
     delSetting("oauth_token_secret")
     delSetting("username")
     self.oauth_token = nil
     self.oauth_token_secret = nil
     self.username = nil
+
+    -- clear request queueu
+    self.queued_requests = {}
+    self:saveQueue(self.queued_requests)
 end
 
 function InstapaperAPIManager:isAuthenticated()
@@ -256,6 +280,40 @@ function InstapaperAPIManager:buildOAuthRequest(method, url, params, token_secre
     return request
 end
 
+-- Helper method for queueable API requests
+function InstapaperAPIManager:executeQueueableRequest(endpoint, additional_params)
+    if not self:isAuthenticated() then
+        return false, "Not authenticated"
+    end
+    
+    -- Build parameters with oauth_token
+    local params = {
+        oauth_token = self.oauth_token
+    }
+    -- Add any additional parameters
+    for key, value in pairs(additional_params) do
+        params[key] = value
+    end
+    
+    -- Check if we're online
+    if not NetworkMgr:isOnline() then
+        -- Queue the request for later
+        self:addToQueue(self.api_base .. endpoint, params)
+        return true, nil
+    end
+    
+    -- Generate OAuth parameters and execute request
+    local oauth_params = self:generateOAuthParams(params)
+    local request = self:buildOAuthRequest("POST", self.api_base .. endpoint, oauth_params, self.oauth_token_secret)
+    local success, body, error_message = self:executeRequest(request)
+    
+    if success then
+        return true, nil
+    else
+        return false, error_message
+    end
+end
+
 -- Generate common OAuth parameters
 function InstapaperAPIManager:generateOAuthParams(additional_params)
     local params = {
@@ -277,7 +335,7 @@ function InstapaperAPIManager:generateOAuthParams(additional_params)
 end
 
 -- Generic HTTP request executor
-local function executeRequest(request)
+function InstapaperAPIManager:executeRequest(request)
     if not NetworkMgr:isOnline() then
         
         return false,{}, "Your ereader is not currently online. Please connect to wifi and try again."
@@ -350,7 +408,7 @@ function InstapaperAPIManager:authenticate(username, password)
     
     -- Build and execute request
     local request = self:buildOAuthRequest("POST", self.ACCESS_TOKEN_URL, authorization_params, nil)
-    local success, body, error_message = executeRequest(request)
+    local success, body, error_message = self:executeRequest(request)
     
     if success then        
         -- Parse the response which contains the access token and secret
@@ -396,7 +454,7 @@ function InstapaperAPIManager:getArticles(limit, have)
     
     -- Build and execute request
     local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/list", params, self.oauth_token_secret)
-    local success, body, error_message = executeRequest(request)
+    local success, body, error_message = self:executeRequest(request)
     
     if success then
         local success, output = pcall(JSON.decode, body)
@@ -450,7 +508,7 @@ function InstapaperAPIManager:getArticleText(bookmark_id)
     
     -- Build and execute request (POST with all params in signature)
     local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/get_text", params, self.oauth_token_secret)
-    local success, body, error_message = executeRequest(request)
+    local success, body, error_message = self:executeRequest(request)
     
     if success then
         return true, body, nil
@@ -460,89 +518,73 @@ function InstapaperAPIManager:getArticleText(bookmark_id)
 end
 
 function InstapaperAPIManager:addArticle(url)
-    if not self:isAuthenticated() then
-        return false, "Not authenticated"
-    end
-    
-    local params = self:generateOAuthParams({
-        oauth_token = self.oauth_token,
-        url = url
-    })
-   
-    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/add", params, self.oauth_token_secret)
-    local success, body, error_message = executeRequest(request)
-    
-    if success then
-        return true, nil
-    else
-        return false, error_message
-    end
+    return self:executeQueueableRequest("/api/1/bookmarks/add", {url = url})
 end
 
 function InstapaperAPIManager:archiveArticle(bookmark_id)    
-    if not self:isAuthenticated() then
-        return false, "Not authenticated"
-    end
-    
-    -- Generate OAuth parameters including bookmark_id for signature
-    local params = self:generateOAuthParams({
-        oauth_token = self.oauth_token,
-        bookmark_id = tostring(bookmark_id)
-    })
-    
-    -- Build and execute request
-    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/archive", params, self.oauth_token_secret)
-    local success, body, error_message = executeRequest(request)
-    
-    if success then
-        return true, nil
-    else
-        return false, error_message
-    end
+    return self:executeQueueableRequest("/api/1/bookmarks/archive", {bookmark_id = tostring(bookmark_id)})
 end
 
 function InstapaperAPIManager:favoriteArticle(bookmark_id)    
-    if not self:isAuthenticated() then
-        return false, "Not authenticated"
-    end
-    
-    -- Generate OAuth parameters including bookmark_id for signature
-    local params = self:generateOAuthParams({
-        oauth_token = self.oauth_token,
-        bookmark_id = tostring(bookmark_id)
-    })
-    
-    -- Build and execute request
-    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/star", params, self.oauth_token_secret)
-    local success, body, error_message = executeRequest(request)
-    
-    if success then
-        return true, nil
-    else
-        return false, error_message
-    end
+    return self:executeQueueableRequest("/api/1/bookmarks/star", {bookmark_id = tostring(bookmark_id)})
 end
 
 function InstapaperAPIManager:unfavoriteArticle(bookmark_id)    
-    if not self:isAuthenticated() then
-        return false, "Not authenticated"
+    return self:executeQueueableRequest("/api/1/bookmarks/unstar", {bookmark_id = tostring(bookmark_id)})
+end
+
+-- Queue management methods
+function InstapaperAPIManager:addToQueue(url, params)
+    local queued_request = {
+        url = url,
+        params = params,
+        timestamp = os.time()
+    }
+    table.insert(self.queued_requests, queued_request)
+    self:saveQueue(self.queued_requests)
+    logger.dbg("instapaper: Added request to queue, queue size:", #self.queued_requests)
+end
+
+function InstapaperAPIManager:processQueuedRequests()
+    if #self.queued_requests == 0 then
+        return {}
     end
     
-    -- Generate OAuth parameters including bookmark_id for signature
-    local params = self:generateOAuthParams({
-        oauth_token = self.oauth_token,
-        bookmark_id = tostring(bookmark_id)
-    })
+    logger.dbg("instapaper: Processing", #self.queued_requests, "queued requests")
     
-    -- Build and execute request
-    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1/bookmarks/unstar", params, self.oauth_token_secret)
-    local success, body, error_message = executeRequest(request)
+    local errors = {}
+    local processed_count = 0
     
-    if success then
-        return true, nil
-    else
-        return false, error_message
+    -- Process requests FIFO
+    local i = 1
+    while i <= #self.queued_requests do
+        local queued_request = self.queued_requests[i]
+        
+        -- Rebuild the request with fresh OAuth parameters
+        local oauth_params = self:generateOAuthParams(queued_request.params)
+        local request = self:buildOAuthRequest("POST", queued_request.url, oauth_params, self.oauth_token_secret)
+        local success, _, error_message = self:executeRequest(request)
+        
+        if success then
+            table.remove(self.queued_requests, i)
+            processed_count = processed_count + 1
+            logger.dbg("instapaper: Successfully processed queued request")
+        else
+            table.insert(errors, {
+                url = queued_request.url,
+                params = queued_request.params,
+                error = error_message or "Unknown error"
+            })
+            logger.warn("instapaper: Failed to process queued request:", error_message)
+            i = i + 1 -- Move to next request
+        end
     end
+    
+    -- Save updated queue
+    self:saveQueue(self.queued_requests)
+    
+    logger.dbg("instapaper: Processed", processed_count, "requests,", #errors, "errors")
+    return errors
 end
 
 return InstapaperAPIManager
