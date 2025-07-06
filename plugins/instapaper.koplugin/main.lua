@@ -534,27 +534,30 @@ function Instapaper:showMenu()
             {
                 text = sync_string,
                 callback = function()
-                    local info = InfoMessage:new{ text = _("Syncing articles...") }
-                    UIManager:show(info)
-                    
-                    -- Perform sync
-                    local success, error_message = self.instapaperManager:syncReads()
-                    
-                    UIManager:close(info)
-                    
-                    if success then
-                        UIManager:show(InfoMessage:new{ 
-                            text = _("Sync completed successfully!"),
-                            timeout = 2
-                        })
-                        -- Refresh the display
-                        self:showArticles()
-                    else
-                        UIManager:show(ConfirmBox:new{
-                            text = _("Sync failed: " .. error_message),
-                            ok_text = _("OK"),
-                        })
-                    end
+                    -- Use runWhenOnline to handle Wi-Fi reconnection non-blockingly
+                    NetworkMgr:runWhenOnline(function()
+                        local info = InfoMessage:new{ text = _("Syncing articles...") }
+                        UIManager:show(info)
+                        
+                        -- Perform sync
+                        local success, error_message = self.instapaperManager:syncReads()
+                        
+                        UIManager:close(info)
+                        
+                        if success then
+                            UIManager:show(InfoMessage:new{ 
+                                text = _("Sync completed successfully!"),
+                                timeout = 2
+                            })
+                            -- Refresh the display
+                            self:showArticles()
+                        else
+                            UIManager:show(ConfirmBox:new{
+                                text = _("Sync failed: " .. error_message),
+                                ok_text = _("OK"),
+                            })
+                        end
+                    end)
                 end,
             },
             {
