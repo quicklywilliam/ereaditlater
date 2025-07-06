@@ -70,7 +70,7 @@ function ReaderInstapaper:init()
         self:autoRegisterWithReaderUI()
     end
 
-    self.instapaperManager = InstapaperManager:new()
+    self.instapaperManager = InstapaperManager:instapaperManager()
     
     -- delegate gesture listener to readerui, use empty table instead of nil
     self.ges_events = {}

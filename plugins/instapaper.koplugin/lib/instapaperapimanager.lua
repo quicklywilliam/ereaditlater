@@ -12,6 +12,7 @@ local DataStorage = require("datastorage")
 local LuaSettings = require("luasettings")
 
 local InstapaperAPIManager = {}
+local _instance = nil
 
 -- Settings storage is currently used for auth credentials
 local function getSettings()
@@ -43,14 +44,18 @@ local function delSetting(key)
     settings:flush()
 end
 
-function InstapaperAPIManager:new()
+function InstapaperAPIManager:instapaperAPIManager()
+    -- Return existing instance if it exists
+    if _instance then
+        return _instance
+    end
+    
     local api_manager = {}
 
     -- Load API keys
     local consumer_key, consumer_secret = self:loadApiKeys()
     if not consumer_key or not consumer_secret then
         logger.err("instapaper: Failed to load API keys")
-
         return nil
     end
     
@@ -68,6 +73,9 @@ function InstapaperAPIManager:new()
 
     -- Initialize queue
     api_manager.queued_requests = self:loadQueue()
+    
+    -- Store the singleton instance
+    _instance = api_manager
     
     return api_manager
 end

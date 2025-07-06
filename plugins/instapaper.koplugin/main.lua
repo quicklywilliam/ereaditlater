@@ -73,7 +73,7 @@ end
 
 function Instapaper:init()
     self.uimanager = InstapaperUIManager:new()
-    self.instapaperManager = InstapaperManager:new()
+    self.instapaperManager = InstapaperManager:instapaperManager()
     
     if self.ui and self.ui.menu then
         self.ui.menu:registerToMainMenu(self)    

@@ -15,20 +15,25 @@ local socketutil = require("socketutil")
 local socket = require("socket")
 
 local InstapaperManager = {}
+local _manager_instance = nil
 
-function InstapaperManager:new()
+function InstapaperManager:instapaperManager()
+    -- Return existing instance if it exists
+    if _manager_instance then
+        return _manager_instance
+    end
+    
     local o = {}
     setmetatable(o, self)
     self.__index = self
     
-    o.instapaper_api_manager = InstapaperAPIManager:new()
-    
-
-    
-
+    o.instapaper_api_manager = InstapaperAPIManager:instapaperAPIManager()
 
     o.storage = Storage:new()
     o.storage:init()
+    
+    -- Store the singleton instance
+    _manager_instance = o
     
     return o
 end
