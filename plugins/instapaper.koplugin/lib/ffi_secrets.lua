@@ -6,19 +6,22 @@ local M = {}
 
 -- Try to load the compiled secrets library
 local function try_load_compiled_library()
-    local success, lib = pcall(function()
-        ffi.cdef[[
-        const char *get_instapaper_consumer_key();
-        const char *get_instapaper_consumer_secret();
-        ]]
-        return ffi.load("plugins/instapaper.koplugin/lib/instapapersecrets")
+    local current_dir = lfs.currentdir()
+    
+    local success, instapapersecrets = pcall(function()
+        return ffi.load(current_dir .. "/plugins/instapaper.koplugin/lib/instapapersecrets.so")
     end)
     
     if success then
         logger.dbg("instapaper: Successfully loaded compiled secrets library")
-        return lib
+        ffi.cdef[[
+            const char *get_instapaper_consumer_key();
+            const char *get_instapaper_consumer_secret();
+            ]]
+        return instapapersecrets
     else
         logger.dbg("instapaper: Failed to load compiled secrets library:", lib)
+        logger.dbg("instapaper: This is expected if the library is not available for this platform")
         return nil
     end
 end
@@ -27,7 +30,7 @@ end
 local function try_read_text_file()
     -- Look for secrets file in user's config directory
     local home = os.getenv("HOME")
-    local secrets_path = home and (home .. "/.config/koreader/secrets.txt") or "plugins/instapaper.koplugin/secrets.txt"
+    local secrets_path = home and (home .. "/.config/koreader/secrets.txt") or "secrets.txt"
     
     local file = io.open(secrets_path, "r")
     if not file then
