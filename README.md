@@ -23,6 +23,8 @@ Eread-it-later is currently in early development and has only been tested on Kob
 
 [x] Save new articles
 
+[x] Offline request queueing and gracefull offline support
+
 [ ] Improved access to device controls (backlight, rotation lock, etc)
 
 [ ] One-click installation
