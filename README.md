@@ -5,7 +5,9 @@
   <img src="https://github.com/user-attachments/assets/f0c72004-3f0e-4984-8537-b92983d227ca" alt="drawing" style="width:45%;"/>
 </p>
 
-Open source client application for read it later services (currently just Instapaper). Based on KOReader, works with Kobo/Kindle/etc.
+Eread-it-later is an open source client application for read it later services. Currently this is limited to Instapaper. Eread-it-later is based on KOReader, so it works with Kobo/Kindle/etc.
+
+Eread-it-later is currently in early development and has only been tested on Kobo so far. It's still very much a work in progress. It probably needs a better name at some point, too.
 
 ## Features
 
@@ -13,15 +15,17 @@ Open source client application for read it later services (currently just Instap
 
 [x] Browse saved articles
 
-[x] Open articles in KOReader
+[x] Download articles and images for offline reading
+
+[x] Open and read articles
 
 [x] Favorite, Unfavorite and Archive Articles
 
-[x] Download articles and images for offline reading
+[x] Save new articles
 
-[ ] Easy installation
+[ ] Improved access to device controls (backlight, rotation lock, etc)
 
-[ ] Easy access to device controls (backlight, rotation lock, etc)
+[ ] One-click installation
 
 [ ] Browsing favorites and archive
 
@@ -31,7 +35,7 @@ Open source client application for read it later services (currently just Instap
 
 ## How to Install
 
-Currently the only way to install this is to install KOReader and then manually copy over the Instapaper plugin. A better installation experience is coming.
+Download the current [release](https://github.com/quicklywilliam/ereaditlater/releases) and install using the "Manual Installation Method" detailed [here](https://github.com/koreader/koreader/wiki/Installation-on-Kobo-devices#manual-installation-method-based-on-kfmon). Note that it is not yet possible to run this project alongside KOReader – installing will replace your current KOReader install, if any.
 
 ## Setting up for development
 
