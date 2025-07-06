@@ -347,13 +347,13 @@ function InstapaperManager:addArticle(url)
     end
 
     logger.dbg("instapaper: Adding article:", url)
-    local success, error_message = self.instapaper_api_manager:addArticle(url)
+    local success, error_message, did_enqueue = self.instapaper_api_manager:addArticle(url)
     if success then
         logger.dbg("instapaper: Successfully added article:", url)
-        return true, nil
+        return true, nil, did_enqueue
     else
         logger.err("instapaper: Failed to add article:", url)
-        return false, error_message
+        return false, error_message, false
     end
 end
 
@@ -454,14 +454,14 @@ function InstapaperManager:archiveArticle(bookmark_id)
         return false
     end
     logger.dbg("instapaper: Archiving article:", bookmark_id)
-    local success, error_message = self.instapaper_api_manager:archiveArticle(bookmark_id)
+    local success, error_message, did_enqueue = self.instapaper_api_manager:archiveArticle(bookmark_id)
     if success then
         self.storage:updateArticleStatus(bookmark_id, "archived", true)
         logger.dbg("instapaper: Successfully archived article:", bookmark_id)
-        return true, nil
+        return true, nil, did_enqueue
     else
         logger.err("instapaper: Failed to archive article:", bookmark_id)
-        return false, error_message
+        return false, error_message, false
     end
 end
 
@@ -471,14 +471,14 @@ function InstapaperManager:favoriteArticle(bookmark_id)
         return false
     end
     logger.dbg("instapaper: Favoriting article:", bookmark_id)
-    local success, error_message = self.instapaper_api_manager:favoriteArticle(bookmark_id)
+    local success, error_message, did_enqueue = self.instapaper_api_manager:favoriteArticle(bookmark_id)
     if success then
         self.storage:updateArticleStatus(bookmark_id, "starred", true)
         logger.dbg("instapaper: Successfully favorited article:", bookmark_id)
-        return true, nil
+        return true, nil, did_enqueue
     else
         logger.err("instapaper: Failed to favorite article:", bookmark_id)
-        return false, error_message
+        return false, error_message, false
     end
 end
 
@@ -488,14 +488,14 @@ function InstapaperManager:unfavoriteArticle(bookmark_id)
         return false
     end
     logger.dbg("instapaper: Unfavoriting article:", bookmark_id)
-    local success, error_message = self.instapaper_api_manager:unfavoriteArticle(bookmark_id)
+    local success, error_message, did_enqueue = self.instapaper_api_manager:unfavoriteArticle(bookmark_id)
     if success then
         self.storage:updateArticleStatus(bookmark_id, "starred", false)
         logger.dbg("instapaper: Successfully unfavorited article:", bookmark_id)
-        return true, nil
+        return true, nil, did_enqueue
     else
         logger.err("instapaper: Failed to unfavorite article:", bookmark_id)
-        return false, error_message
+        return false, error_message, false
     end
 end
 

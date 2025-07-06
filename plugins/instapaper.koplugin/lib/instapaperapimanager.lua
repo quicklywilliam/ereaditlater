@@ -308,9 +308,9 @@ function InstapaperAPIManager:executeQueueableRequest(endpoint, additional_param
     local success, body, error_message = self:executeRequest(request)
     
     if success then
-        return true, nil
+        return true, nil, false
     else
-        return false, error_message
+        return false, error_message, false
     end
 end
 

@@ -346,12 +346,12 @@ function ReaderInstapaper:onArchiveArticle()
     
     -- Perform archive action
     UIManager:nextTick(function()
-        local success, error_message = self.instapaperManager:archiveArticle(self.current_article.bookmark_id)
+        local success, error_message, did_enqueue = self.instapaperManager:archiveArticle(self.current_article.bookmark_id)
         UIManager:close(info)
         
         if success then
             UIManager:show(InfoMessage:new{
-                text = _("Article archived"),
+                text = (did_enqueue and "Article will be archived in next sync") or "Article archived",
                 timeout = 2,
             })
             -- Return to articles list
@@ -382,7 +382,7 @@ function ReaderInstapaper:onFavoriteArticle()
     
     -- Perform favorite action
     UIManager:nextTick(function()
-        local success, error_message = self.instapaperManager:favoriteArticle(self.current_article.bookmark_id)
+        local success, error_message, did_enqueue = self.instapaperManager:favoriteArticle(self.current_article.bookmark_id)
         UIManager:close(info)
         
         if success then
@@ -395,7 +395,7 @@ function ReaderInstapaper:onFavoriteArticle()
             end)
             
             UIManager:show(InfoMessage:new{
-                text = _("Article favorited"),
+                text = (did_enqueue and "Article will be favorited in next sync") or "Article favorited",
                 timeout = 2,
             })
         else
@@ -424,7 +424,7 @@ function ReaderInstapaper:onUnfavoriteArticle()
     
     -- Perform favorite action
     UIManager:nextTick(function()
-        local success, error_message = self.instapaperManager:unfavoriteArticle(self.current_article.bookmark_id)
+        local success, error_message, did_enqueue = self.instapaperManager:unfavoriteArticle(self.current_article.bookmark_id)
         UIManager:close(info)
         
         if success then
@@ -437,7 +437,7 @@ function ReaderInstapaper:onUnfavoriteArticle()
             end)
             
             UIManager:show(InfoMessage:new{
-                text = _("Article unfavorited"),
+                text = (did_enqueue and "Article will be unfavorited in next sync") or "Article unfavorited",
                 timeout = 2,
             })
         else

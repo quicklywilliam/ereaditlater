@@ -657,22 +657,13 @@ end
 
 --- Handler for our button in the ReaderUI's link menu
 function Instapaper:onAddToInstapaper(url)
-    if not NetworkMgr:isOnline() then
-        -- currently there is no way to add an article to an offline queue, so we just show a message
-        UIManager:show(InfoMessage:new{
-            text = "Your ereader is currently offline. Connect to wifi and try again.",
-            icon = "wifi.open.0",
-        })
-        return
-    end
-
-    local success, error_message = self.instapaperManager:addArticle(url)
+    local success, error_message, did_enqueue = self.instapaperManager:addArticle(url)
 
     if success then
         UIManager:show(InfoMessage:new{
-            text = "Saved to Instapaper",
+            text = (did_enqueue and "Article will be saved in next sync") or "Saved to Instapaper",
             icon = "check",
-            timeout = 1,
+            timeout = 2,
         })
     else
         UIManager:show(InfoMessage:new{
