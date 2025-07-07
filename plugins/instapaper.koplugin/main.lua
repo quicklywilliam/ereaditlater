@@ -190,34 +190,36 @@ function Instapaper:showLoginDialog()
                             return
                         end
                         
-                        
-                        -- Show loading message
-                        local info = InfoMessage:new{ text = _("Logging in...") }
-                        UIManager:show(info)
-                        
-                        -- Perform authentication
-                        local success, error_message = self.instapaperManager:authenticate(username, password)
-
-                        UIManager:close(info)
-
-                        if success then
-                            UIManager:close(self.login_dialog)
-
-                            -- initial sync can take a while, so show a message
-                            local info = InfoMessage:new{ text = _("Syncing articles...") }
+                        -- Use runWhenOnline to handle Wi-Fi reconnection non-blockingly
+                        NetworkMgr:runWhenOnline(function()
+                            -- Show loading message
+                            local info = InfoMessage:new{ text = _("Logging in...") }
                             UIManager:show(info)
+                            
+                            -- Perform authentication
+                            local success, error_message = self.instapaperManager:authenticate(username, password)
 
-                            UIManager:scheduleIn(0.1, function()
-                                self.instapaperManager:syncReads()
-                                self:showArticles()
-                                UIManager:close(info)
-                            end)
-                        else 
-                            UIManager:show(ConfirmBox:new{
-                                text = _("Could not log in: " .. error_message),
-                                ok_text = _("OK"),
-                            })
-                        end
+                            UIManager:close(info)
+
+                            if success then
+                                UIManager:close(self.login_dialog)
+
+                                -- initial sync can take a while, so show a message
+                                local info = InfoMessage:new{ text = _("Syncing articles...") }
+                                UIManager:show(info)
+
+                                UIManager:scheduleIn(0.1, function()
+                                    self.instapaperManager:syncReads()
+                                    self:showArticles()
+                                    UIManager:close(info)
+                                end)
+                            else 
+                                UIManager:show(ConfirmBox:new{
+                                    text = _("Could not log in: " .. error_message),
+                                    ok_text = _("OK"),
+                                })
+                            end
+                        end)
                     end,
                 },
             },
