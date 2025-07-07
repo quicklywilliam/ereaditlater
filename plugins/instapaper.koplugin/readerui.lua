@@ -19,6 +19,8 @@ local HorizontalSpan = require("ui/widget/horizontalspan")
 local Font = require("ui/font")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local InstapaperManager = require("instapapermanager")
+local ButtonDialog = require("ui/widget/buttondialog")
+local ReaderStatus = require("apps/reader/modules/readerstatus")
 
 local ReaderInstapaper = InputContainer:extend{
     name = "readerinstapaper",
@@ -94,7 +96,7 @@ function ReaderInstapaper:autoRegisterWithReaderUI()
                 }
                 
                 -- Register with ReaderUI
-                ReaderUI.instance:registerModule("instapaper", module_instance)
+                ReaderUI.instance:registerModule("readerinstapaper", module_instance)
                 
                 return true -- Stop checking
             end
@@ -449,7 +451,47 @@ function ReaderInstapaper:onUnfavoriteArticle()
     end)
 end
 
+local function showInstapaperEndOfBookDialog(self)
+    local button_dialog
+    button_dialog = ButtonDialog:new{
+        name = "end_document_instapaper",
+        title = _("You've reached the end of the article."),
+        title_align = "center",
+        buttons = {
+            {
+                {
+                    text = _("Archive"),
+                    callback = function()
+                        UIManager:close(button_dialog)
+                        if self.ui.readerinstapaper then
+                            self.ui.readerinstapaper:onArchiveArticle()
+                        end
+                    end,
+                },
+                {
+                    text = _("Return to list"),
+                    callback = function()
+                        UIManager:close(button_dialog)
+                        if self.ui.readerinstapaper then
+                            self.ui.readerinstapaper:onBackToArticles()
+                        end
+                    end,
+                },
+            },
+        },
+    }
+    UIManager:show(button_dialog)
+end
 
+-- Monkey patch ReaderStatus:onEndOfBook for Instapaper UI
+local orig_onEndOfBook = ReaderStatus.onEndOfBook
+function ReaderStatus:onEndOfBook(...)
+    if self.ui and self.ui.readerinstapaper and self.ui.readerinstapaper.name == "readerreaderinstapaper" then
+        showInstapaperEndOfBookDialog(self)
+    else
+        orig_onEndOfBook(self, ...)
+    end
+end
 
 
 function ReaderInstapaper:onClose()

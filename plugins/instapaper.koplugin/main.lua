@@ -38,7 +38,6 @@ local Button = require("ui/widget/button")
 local Event = require("ui/event")
 local NetworkMgr = require("ui/network/manager")
 
-
 local Instapaper = WidgetContainer:extend{
     name = "instapaper",
     list_view = nil, -- KeyValuePage
@@ -630,7 +629,6 @@ function Instapaper:showArticleContent(article)
         doc_settings:flush()
         ReaderUI:showReader(file_path)
 
-
         -- Register our Instapaper module after ReaderUI is created
         UIManager:scheduleIn(0.1, function()
             if ReaderUI.instance then
@@ -645,8 +643,9 @@ function Instapaper:showArticleContent(article)
                         self:showArticles()
                     end,
                 }
-                ReaderUI.instance:registerModule("instapaper", module_instance)
+                ReaderUI.instance:registerModule("readerinstapaper", module_instance)
                 logger.dbg("Instapaper: Registered ReaderInstapaper module")
+                logger.dbg("Instapaper: on instance:", tostring(ReaderUI.instance))
             end
         end)
 
