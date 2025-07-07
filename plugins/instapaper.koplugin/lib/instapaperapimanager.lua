@@ -365,7 +365,7 @@ function InstapaperAPIManager:executeRequest(request)
     
     local body = table.concat(sink)
     
-    if code >= 200 and code < 300 then
+    if type(code) == "number" and code >= 200 and code < 300 then
         return true, body, nil
     else
         local error_message = nil
@@ -374,7 +374,7 @@ function InstapaperAPIManager:executeRequest(request)
         if body then
             local decodesuccess, output = pcall(JSON.decode, body)
 
-            if decodesuccess then
+            if decodesuccess and output ~= nil then
                 for _, item in ipairs(output) do
                     if item.type == "error" then
                         if item.message and #item.message > 0 then

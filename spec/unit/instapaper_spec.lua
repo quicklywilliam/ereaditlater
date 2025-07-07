@@ -86,6 +86,25 @@ describe("Instapaper offline queueing", function()
         assert.equals(queued_request.timestamp, loaded_queue[1].timestamp)
     end)
 
+    it("should not crash when socket.skip returns a string error code", function()
+        local api_manager = InstapaperAPIManager:instapaperAPIManager()
+        api_manager.oauth_token = "dummy_token"
+        api_manager.oauth_token_secret = "dummy_secret"
+        -- Mock NetworkMgr to be online
+        NetworkMgr.isOnline = function() return true end
+        -- Patch socket.skip to return a string error code
+        local socket = require("socket")
+        local orig_skip = socket.skip
+        socket.skip = function() return "string_error_code", nil, nil end
+        -- Try to add an article (triggers executeQueueableRequest -> executeRequest)
+        local ok, err = api_manager:addArticle("https://example.com/test")
+        -- The test is successful if it does not crash
+        assert.is_false(ok)
+        assert.is_string(err)
+        -- Restore
+        socket.skip = orig_skip
+    end)
+
     describe("article downloading", function()
         local InstapaperManager, InstapaperAPIManager, NetworkMgr, orig_isOnline, orig_getArticleText, orig_downloadImage, orig_storeArticle, orig_getArticleHTML, orig_getArticle, orig_storeArticleMetadata, orig_isAuthenticated
         local dummy_bookmark_id = 12345
