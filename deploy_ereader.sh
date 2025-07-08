@@ -15,6 +15,14 @@ NC='\033[0m' # No Color
 PLUGIN_SOURCE="plugins/ereader.koplugin"
 DEVICE_PLUGIN_DIR="/Volumes/KOBOeReader/.adds/koreader/plugins"
 
+# Additional files to copy (source -> destination relative to KOReader root)
+KOREADER_BASE_FILES=(
+    "frontend/ui/elements/filemanager_menu_order.lua"
+    "frontend/ui/elements/reader_menu_order.lua"
+    "frontend/ui/widget/menu.lua"
+    "reader.lua"
+)
+
 echo -e "${GREEN}KOReader eReader Plugin Deployment Script${NC}"
 echo "================================================"
 
@@ -42,6 +50,32 @@ fi
 # Copy plugin to device
 echo -e "${GREEN}Copying plugin to device...${NC}"
 cp -r "$PLUGIN_SOURCE" "$DEVICE_PLUGIN_DIR/"
+
+# Copy base files to device
+for FILE in "${KOREADER_BASE_FILES[@]}"; do
+    DEST="/Volumes/KOBOeReader/.adds/koreader/${FILE}"
+    DEST_DIR="$(dirname "$DEST")"
+    if [ ! -d "$DEST_DIR" ]; then
+        echo -e "${YELLOW}Creating directory $DEST_DIR on device...${NC}"
+        mkdir -p "$DEST_DIR"
+    fi
+    echo -e "${GREEN}Copying $FILE to device...${NC}"
+    cp "$FILE" "$DEST"
+done
+
+# Check for .adds/nm directory and create ereader menu item if needed
+NM_DIR="/Volumes/KOBOeReader/.adds/nm"
+NM_FILE="$NM_DIR/ereader"
+if [ -d "$NM_DIR" ]; then
+    if [ ! -f "$NM_FILE" ]; then
+        echo -e "${GREEN}Creating eReader menu item in $NM_DIR...${NC}"
+        cat > "$NM_FILE" <<EOF
+menu_item : main : eReader : cmd_spawn : quiet : exec /mnt/onboard/.adds/koreader/koreader.sh -ereader
+EOF
+    else
+        echo -e "${YELLOW}eReader menu item already exists in $NM_DIR.${NC}"
+    fi
+fi
 
 # Set proper permissions
 echo -e "${GREEN}Setting permissions...${NC}"

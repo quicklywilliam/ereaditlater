@@ -52,15 +52,19 @@ After this, follow the [typical steps](https://github.com/koreader/koreader/blob
 
 ## How to Install
 
-I recommend you use the [KOReader virtual dev](https://github.com/koreader/virdevenv) environment when building for release. For example, to build for kobo:
+Currently, the easiest way to install eReader is on top of an existing KOReader install. If you do not already have KOReader, follow [these instructions](https://github.com/koreader/koreader/wiki/Installation-on-Kobo-devices) to install it (using either the semi-automated method or manually installing KFMon and KOReader).
+
+Once you have installed it, you can simply check out the eReader code and run this command:
 ```
-docker run  --platform linux/amd64  -v [Path to eReader directory]:/home/ko/koreader -it koreader/kokobo:latest bash
-cd /home/ko/koreader && ./kodev fetch-thirdparty
-./kodev release kobo
+./deploy_ereader.sh
 ```
- Once you have a release, you can install it using the "Manual Installation Method" detailed [here](https://github.com/koreader/koreader/wiki/Installation-on-Kobo-devices#manual-installation-method-based-on-kfmon). Note that this will replace any existing installs of KOReader, but eReader contains a fully functioning instance KOReader. If you like, you can use [NickleMenu](https://github.com/pgaskin/NickelMenu) to setup a button to launch both, ie:
+
+ This will install eReader ontop of your existing installs of KOReader, but eReader contains a fully functioning instance KOReader. It will also add a shortcut to launch eReader using [NickleMenu](https://github.com/pgaskin/NickelMenu). It will not replace your existing KOReader shortcut, so you can still launch both ie:
  ```
+ # Launch eReader
  menu_item : main : eReader : cmd_spawn : quiet : exec /mnt/onboard/.adds/koreader/koreader.sh -eReader
+ 
+ # Launch KOReader
  menu_item : main : KOReader : cmd_spawn : quiet : exec /mnt/onboard/.adds/koreader/koreader.sh
  ```
 
