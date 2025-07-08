@@ -5,9 +5,28 @@
   <img src="https://github.com/user-attachments/assets/f0c72004-3f0e-4984-8537-b92983d227ca" alt="drawing" style="width:45%;"/>
 </p>
 
-eReader is an open source client application for read it later services. eReader is based on KOReader, so it works with Kobo/Kindle/etc. eReader is designed to be simpler to use than KOReader, with the assumption that most users will use it alongside their device's native experience (ie for reading ebooks). eReader also allows you to access to a fully functioning version of KOReader if you so desire.
+eReader is an open source client application for read it later services (currently just Instapaper). eReader is based on KOReader, so it works with Kobo/Kindle/etc. eReader is designed to be simpler to use than KOReader, with the assumption that most users will use it alongside their device's native experience (ie for reading ebooks). eReader also allows you to access to a fully functioning version of KOReader if you so desire.
 
 eReader is currently in early development and has only been tested on Kobo so far. It's still very much a work in progress.
+
+## Installing eReader
+
+Currently, the easiest way to install eReader is on top of an existing KOReader install. If you do not already have KOReader, follow [these instructions](https://github.com/koreader/koreader/wiki/Installation-on-Kobo-devices) to install it (using either the semi-automated method or manually installing KFMon and KOReader).
+
+Once you have installed it, you can simply check out the eReader code and run this command:
+```
+./deploy_ereader.sh
+```
+
+ This will install eReader ontop of your existing installs of KOReader, but eReader contains a fully functioning instance KOReader. It will also add a shortcut to launch eReader using [NickleMenu](https://github.com/pgaskin/NickelMenu). It will not replace your existing KOReader shortcut, so you can still launch both ie:
+ ```
+ # Launch eReader
+ menu_item : main : eReader : cmd_spawn : quiet : exec /mnt/onboard/.adds/koreader/koreader.sh -eReader
+ 
+ # Launch KOReader
+ menu_item : main : KOReader : cmd_spawn : quiet : exec /mnt/onboard/.adds/koreader/koreader.sh
+ ```
+
 
 ## Features
 
@@ -49,25 +68,6 @@ instapaper_oauth_consumer_secret = "your_consumer_secret"
 ```
 
 After this, follow the [typical steps](https://github.com/koreader/koreader/blob/master/doc/Building.md) for building and running koreader.
-
-## How to Install
-
-Currently, the easiest way to install eReader is on top of an existing KOReader install. If you do not already have KOReader, follow [these instructions](https://github.com/koreader/koreader/wiki/Installation-on-Kobo-devices) to install it (using either the semi-automated method or manually installing KFMon and KOReader).
-
-Once you have installed it, you can simply check out the eReader code and run this command:
-```
-./deploy_ereader.sh
-```
-
- This will install eReader ontop of your existing installs of KOReader, but eReader contains a fully functioning instance KOReader. It will also add a shortcut to launch eReader using [NickleMenu](https://github.com/pgaskin/NickelMenu). It will not replace your existing KOReader shortcut, so you can still launch both ie:
- ```
- # Launch eReader
- menu_item : main : eReader : cmd_spawn : quiet : exec /mnt/onboard/.adds/koreader/koreader.sh -eReader
- 
- # Launch KOReader
- menu_item : main : KOReader : cmd_spawn : quiet : exec /mnt/onboard/.adds/koreader/koreader.sh
- ```
-
 
 ## Contributing
 
