@@ -35,6 +35,8 @@ Eread-it-later is currently in early development and has only been tested on Kob
 
 [ ] Tagging
 
+[ ] Readwise Reader support
+
 ## How to Install
 
 Download the current [release](https://github.com/quicklywilliam/ereaditlater/releases) and install using the "Manual Installation Method" detailed [here](https://github.com/koreader/koreader/wiki/Installation-on-Kobo-devices#manual-installation-method-based-on-kfmon). Note that it is not yet possible to run this project alongside KOReader – installing will replace your current KOReader install, if any.
