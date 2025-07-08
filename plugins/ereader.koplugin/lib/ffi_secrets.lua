@@ -9,7 +9,7 @@ local function try_load_compiled_library()
     local current_dir = lfs.currentdir()
     
     local success, instapapersecrets = pcall(function()
-        return ffi.load(current_dir .. "/plugins/instapaper.koplugin/lib/instapapersecrets.so")
+        return ffi.load(current_dir .. "/plugins/ereader.koplugin/lib/instapapersecrets.so")
     end)
     
     if success then
