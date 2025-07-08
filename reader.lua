@@ -113,8 +113,8 @@ local lfs = require("libs/libkoreader-lfs")
 local file
 local directory
 local Profiler = nil
--- Add instapaper launch flag
-local launch_instapaper = false
+-- Add ereader launch flag
+local launch_ereader = false
 local ARGV = arg
 local argidx = 1
 while argidx <= #ARGV do
@@ -136,9 +136,9 @@ while argidx <= #ARGV do
     elseif arg == "-p" then
         Profiler = require("jit.p")
         Profiler.start("la")
-    -- Handle new instapaper option
-    elseif arg == "-instapaper" then
-        launch_instapaper = true
+    -- Handle new eReader option
+    elseif arg == "-ereader" then
+        launch_ereader = true
     else
         -- not a recognized option, should be a filename or directory
         local sanitized_path = getPathFromURI(arg)
@@ -240,28 +240,28 @@ end
 
 -- Start app
 local exit_code
-if launch_instapaper then
-    -- Instapaper as Startup App
+if launch_ereader then
+    -- eReader as Startup App
     local ok, PluginLoader = pcall(require, "pluginloader")
     if ok and PluginLoader then
         local enabled_plugins = PluginLoader:loadPlugins()
-        local instapaper_plugin
+        local ereader_plugin
         for _, plugin in ipairs(enabled_plugins) do
-            if plugin.name == "instapaper" then
+            if plugin.name == "ereader" then
                 local ok2, instance = PluginLoader:createPluginInstance(plugin)
                 if ok2 and instance then
-                    instapaper_plugin = instance
+                    ereader_plugin = instance
                 end
                 break
             end
         end
-        if instapaper_plugin then
-            instapaper_plugin:showUI()
+        if ereader_plugin then
+            ereader_plugin:showUI()
             exit_code = UIManager:run()
         else
             -- Fallback: show error and exit
             local InfoMessage = require("ui/widget/infomessage")
-            UIManager:show(InfoMessage:new{ text = "Failed to load Instapaper plugin." })
+            UIManager:show(InfoMessage:new{ text = "Failed to load eReader plugin." })
             exit_code = UIManager:run()
         end
     else

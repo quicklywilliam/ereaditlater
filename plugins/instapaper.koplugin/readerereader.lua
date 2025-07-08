@@ -22,40 +22,40 @@ local InstapaperManager = require("instapapermanager")
 local ButtonDialog = require("ui/widget/buttondialog")
 local ReaderStatus = require("apps/reader/modules/readerstatus")
 
-local ReaderInstapaper = InputContainer:extend{
-    name = "readerinstapaper",
-    is_instapaper_article = false,
+local ReaderEreader = InputContainer:extend{
+    name = "readerereader",
+    is_ereader_document = false,
     current_article = nil,
     toolbar_visible = false,
     toolbar_widget = nil,
 }
 
-function ReaderInstapaper:init()
-    -- Check if this is an Instapaper article by examining the document file path
+function ReaderEreader:init()
+    -- Check if this is an ReaderEreader article by examining the document file path
     if self.ui and self.ui.document and self.ui.document.file then
         local file_path = self.ui.document.file
-        if string.find(file_path, "/instapaper/") or string.find(file_path, "instapaper") then
-            self.is_instapaper_article = true
-            logger.dbg("Instapaper: Detected Instapaper article:", file_path)
+        if string.find(file_path, "/ereader/") or string.find(file_path, "ereader") then
+            self.is_ereader_document = true
+            logger.dbg("ereader: Detected Instapaper article:", file_path)
             
             -- Extract bookmark_id from file path for API calls
             local bookmark_id = self:extractBookmarkIdFromPath(file_path)
             if bookmark_id then
                 self.current_article = { bookmark_id = bookmark_id }
-                logger.dbg("Instapaper: Extracted bookmark_id:", bookmark_id)
+                logger.dbg("ereader: Extracted bookmark_id:", bookmark_id)
             end
             
             -- Register touch zones for showing/hiding toolbar
             self:setupTouchZones()
             
-            -- Safely register to main menu - check if ReaderUI is ready
+            -- Safely register to main menu - check if ReaderEreader is ready
             if self.ui.postInitCallback then
-                -- ReaderUI is ready, register immediately
+                -- ReaderEreader is ready, register immediately
                 self.ui:registerPostInitCallback(function()
                     self.ui.menu:registerToMainMenu(self)
                 end)
             else
-                -- ReaderUI not ready yet, schedule for later
+                -- ReaderEreader not ready yet, schedule for later
                 UIManager:scheduleIn(0.1, function()
                     if self.ui and self.ui.postInitCallback then
                         self.ui:registerPostInitCallback(function()
@@ -67,36 +67,36 @@ function ReaderInstapaper:init()
         end
     end
     
-    -- If we're not in a ReaderUI context, try to auto-register when ReaderUI is created
+    -- If we're not in a ReaderEreader context, try to auto-register when ReaderEreader is created
     if not self.ui then
         self:autoRegisterWithReaderUI()
     end
 
     self.instapaperManager = InstapaperManager:instapaperManager()
     
-    -- delegate gesture listener to readerui, use empty table instead of nil
+    -- delegate gesture listener to ReaderEreader, use empty table instead of nil
     self.ges_events = {}
 end
 
-function ReaderInstapaper:autoRegisterWithReaderUI()
-    -- Try to register ourselves with the ReaderUI when it's created
+function ReaderEreader:autoRegisterWithReaderUI()
+    -- Try to register ourselves with the ReaderEreader when it's created
     local function checkAndRegister()
         local ReaderUI = require("apps/reader/readerui")
         if ReaderUI.instance and ReaderUI.instance.document then
             local file_path = ReaderUI.instance.document.file
-            if file_path and (string.find(file_path, "/instapaper/") or string.find(file_path, "instapaper")) then
-                logger.dbg("Instapaper: Auto-registering with ReaderUI")
+            if file_path and (string.find(file_path, "/ereader/") or string.find(file_path, "ereader")) then
+                logger.dbg("ereader: Auto-registering with ReaderUI")
                 
                 -- Create a new instance of our module
-                local module_instance = ReaderInstapaper:new{
+                local module_instance = ReaderEreader:new{
                     ui = ReaderUI.instance,
                     dialog = ReaderUI.instance,
                     view = ReaderUI.instance.view,
                     document = ReaderUI.instance.document,
                 }
                 
-                -- Register with ReaderUI
-                ReaderUI.instance:registerModule("readerinstapaper", module_instance)
+                -- Register with ReaderEreader
+                ReaderUI.instance:registerModule("readerereader", module_instance)
                 
                 return true -- Stop checking
             end
@@ -117,23 +117,23 @@ function ReaderInstapaper:autoRegisterWithReaderUI()
     end
 end
 
-function ReaderInstapaper:extractBookmarkIdFromPath(file_path)
-    -- Extract bookmark_id from file path like: /path/to/instapaper/12345.html
+function ReaderEreader:extractBookmarkIdFromPath(file_path)
+    -- Extract bookmark_id from file path like: /path/to/ereader/12345.html
     local bookmark_id = string.match(file_path, "/(%d+)%.html$")
     if not bookmark_id then
         -- Try alternative patterns
-        bookmark_id = string.match(file_path, "instapaper[^/]*/(%d+)")
+        bookmark_id = string.match(file_path, "ereader[^/]*/(%d+)")
     end
     return bookmark_id
 end
 
-function ReaderInstapaper:setupTouchZones()
+function ReaderEreader:setupTouchZones()
     if not Device:isTouchDevice() then return end
     
     -- Register a tap zone at the top of the screen to show/hide toolbar
     self.ui:registerTouchZones({
         {
-            id = "instapaper_toolbar_tap",
+            id = "ereader_toolbar_tap",
             ges = "tap",
             screen_zone = {
                 ratio_x = 0, ratio_y = 0,
@@ -152,8 +152,8 @@ function ReaderInstapaper:setupTouchZones()
     })
 end
 
-function ReaderInstapaper:onTapTopArea(ges)
-    if not self.is_instapaper_article then
+function ReaderEreader:onTapTopArea(ges)
+    if not self.is_ereader_document then
         return false
     end
     
@@ -165,12 +165,12 @@ function ReaderInstapaper:onTapTopArea(ges)
     return true
 end
 
-function ReaderInstapaper:showToolbar()
-    if not self.is_instapaper_article or self.toolbar_visible then
+function ReaderEreader:showToolbar()
+    if not self.is_ereader_document or self.toolbar_visible then
         return
     end
     
-    logger.dbg("Instapaper: Showing toolbar")
+    logger.dbg("ereader: Showing toolbar")
     
     local toolbar_height = Screen:scaleBySize(50)
     local button_size = Screen:scaleBySize(40)
@@ -282,7 +282,7 @@ function ReaderInstapaper:showToolbar()
             },
             handler = function(ges)
                 if ges.pos.y >= toolbar_height then
-                    logger.dbg("instapaper: Tap on overlay")
+                    logger.dbg("ereader: Tap on overlay")
                     self:hideToolbar() 
                 end
             end,
@@ -300,12 +300,12 @@ function ReaderInstapaper:showToolbar()
     self.toolbar_visible = true
 end
 
-function ReaderInstapaper:hideToolbar()
+function ReaderEreader:hideToolbar()
     if not self.toolbar_visible then
         return
     end
     
-    logger.dbg("Instapaper: Hiding toolbar")
+    logger.dbg("ereader: Hiding toolbar")
     
     if self.toolbar_root then
         UIManager:close(self.toolbar_root)
@@ -316,14 +316,14 @@ function ReaderInstapaper:hideToolbar()
     self.toolbar_visible = false
 end
 
-function ReaderInstapaper:onBackToArticles()
-    logger.dbg("Instapaper: Back to articles")
+function ReaderEreader:onBackToArticles()
+    logger.dbg("ereader: Back to articles")
     self:hideToolbar()
     
-    -- Close current reader and return to Instapaper plugin
+    -- Close current reader and return to ereader plugin
     self.ui:onClose()
     
-    -- Refresh the Instapaper list view if callback is provided
+    -- Refresh the ereader list view if callback is provided
     if self.refresh_callback then
         UIManager:scheduleIn(0.2, function()
             self.refresh_callback()
@@ -331,7 +331,7 @@ function ReaderInstapaper:onBackToArticles()
     end
 end
 
-function ReaderInstapaper:onArchiveArticle()
+function ReaderEreader:onArchiveArticle()
     if not self.current_article or not self.current_article.bookmark_id then
         UIManager:show(InfoMessage:new{
             text = _("Cannot archive: article not found"),
@@ -340,7 +340,7 @@ function ReaderInstapaper:onArchiveArticle()
         return
     end
     
-    logger.dbg("Instapaper: Archiving article", self.current_article.bookmark_id)
+    logger.dbg("ereader: Archiving article", self.current_article.bookmark_id)
     
     -- Show loading message
     local info = InfoMessage:new{ text = _("Archiving article...") }
@@ -367,7 +367,7 @@ function ReaderInstapaper:onArchiveArticle()
     end)
 end
 
-function ReaderInstapaper:onFavoriteArticle()
+function ReaderEreader:onFavoriteArticle()
     if not self.current_article or not self.current_article.bookmark_id then
         UIManager:show(InfoMessage:new{
             text = _("Cannot favorite: article not found"),
@@ -376,7 +376,7 @@ function ReaderInstapaper:onFavoriteArticle()
         return
     end
     
-    logger.dbg("Instapaper: Favoriting article", self.current_article.bookmark_id)
+    logger.dbg("ereader: Favoriting article", self.current_article.bookmark_id)
     
     -- Show loading message
     local info = InfoMessage:new{ text = _("Favoriting article...") }
@@ -409,7 +409,7 @@ function ReaderInstapaper:onFavoriteArticle()
     end)
 end
 
-function ReaderInstapaper:onUnfavoriteArticle()
+function ReaderEreader:onUnfavoriteArticle()
     if not self.current_article or not self.current_article.bookmark_id then
         UIManager:show(InfoMessage:new{
             text = _("Cannot unfavorite: article not found"),
@@ -418,7 +418,7 @@ function ReaderInstapaper:onUnfavoriteArticle()
         return
     end
     
-    logger.dbg("Instapaper: Unfavoriting article", self.current_article.bookmark_id)
+    logger.dbg("ereader: Unfavoriting article", self.current_article.bookmark_id)
     
     -- Show loading message
     local info = InfoMessage:new{ text = _("Unfavoriting article...") }
@@ -451,10 +451,10 @@ function ReaderInstapaper:onUnfavoriteArticle()
     end)
 end
 
-local function showInstapaperEndOfBookDialog(self)
+local function showEreaderEndOfBookDialog(self)
     local button_dialog
     button_dialog = ButtonDialog:new{
-        name = "end_document_instapaper",
+        name = "end_document_ereader",
         title = _("You've reached the end of the article."),
         title_align = "center",
         buttons = {
@@ -463,8 +463,8 @@ local function showInstapaperEndOfBookDialog(self)
                     text = _("Archive"),
                     callback = function()
                         UIManager:close(button_dialog)
-                        if self.ui.readerinstapaper then
-                            self.ui.readerinstapaper:onArchiveArticle()
+                        if self.ui.readerereader then
+                            self.ui.readerereader:onArchiveArticle()
                         end
                     end,
                 },
@@ -472,8 +472,8 @@ local function showInstapaperEndOfBookDialog(self)
                     text = _("Return to list"),
                     callback = function()
                         UIManager:close(button_dialog)
-                        if self.ui.readerinstapaper then
-                            self.ui.readerinstapaper:onBackToArticles()
+                        if self.ui.readerereader then
+                            self.ui.readerereader:onBackToArticles()
                         end
                     end,
                 },
@@ -483,21 +483,21 @@ local function showInstapaperEndOfBookDialog(self)
     UIManager:show(button_dialog)
 end
 
--- Monkey patch ReaderStatus:onEndOfBook for Instapaper UI
+-- Monkey patch ReaderStatus:onEndOfBook for ReaderEreader UI
 local orig_onEndOfBook = ReaderStatus.onEndOfBook
 function ReaderStatus:onEndOfBook(...)
-    if self.ui and self.ui.readerinstapaper and self.ui.readerinstapaper.name == "readerreaderinstapaper" then
-        showInstapaperEndOfBookDialog(self)
+    if self.ui and self.ui.readerereader and self.ui.readerereader.name == "readerreaderereader" then
+        showEreaderEndOfBookDialog(self)
     else
         orig_onEndOfBook(self, ...)
     end
 end
 
 
-function ReaderInstapaper:onClose()
+function ReaderEreader:onClose()
     self:hideToolbar()
     
-    -- Refresh the Instapaper list view if callback is provided
+    -- Refresh the Ereader list view if callback is provided
     if self.refresh_callback then
         UIManager:scheduleIn(0.2, function()
             self.refresh_callback()
@@ -505,4 +505,4 @@ function ReaderInstapaper:onClose()
     end
 end
 
-return ReaderInstapaper 
+return ReaderEreader 

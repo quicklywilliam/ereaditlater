@@ -1,6 +1,5 @@
 local _ = require("gettext")
 local UIManager = require("ui/uimanager")
-local InstapaperUIManager = require("frontend/ui/instapaper/manager")
 local InstapaperManager = require("instapapermanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local logger = require("logger")
@@ -38,8 +37,8 @@ local Button = require("ui/widget/button")
 local Event = require("ui/event")
 local NetworkMgr = require("ui/network/manager")
 
-local Instapaper = WidgetContainer:extend{
-    name = "instapaper",
+local Ereader = WidgetContainer:extend{
+    name = "eReader",
     list_view = nil, -- KeyValuePage
 }
 
@@ -53,7 +52,7 @@ local function loadDevCredentials()
         home = os.getenv("HOME")
     end
     local secrets_path = home .. "/.config/koreader/auth.txt"
-    logger.err("instapaper: secrets_path:", secrets_path)
+    logger.err("ereader: secrets_path:", secrets_path)
     local file = io.open(secrets_path, "r")
     if file then
         local content = file:read("*all")
@@ -70,8 +69,7 @@ local function loadDevCredentials()
     return stored_username, stored_password
 end
 
-function Instapaper:init()
-    self.uimanager = InstapaperUIManager:new()
+function Ereader:init()
     self.instapaperManager = InstapaperManager:instapaperManager()
     
     if self.ui and self.ui.menu then
@@ -91,9 +89,9 @@ function Instapaper:init()
     end
 end
 
-function Instapaper:addToMainMenu(menu_items)
-    menu_items.instapaper = {
-        text = "Instapaper",
+function Ereader:addToMainMenu(menu_items)
+    menu_items.ereader = {
+        text = "Ereader",
         callback = function()
             Trapper:wrap(function()
                 self:showUI()
@@ -102,7 +100,7 @@ function Instapaper:addToMainMenu(menu_items)
     }
 end
 
-function Instapaper:showUI() 
+function Ereader:showUI() 
     if not self:checkAPIKeys() then
         return
     end
@@ -114,7 +112,7 @@ function Instapaper:showUI()
     end
 end
 
-function Instapaper:checkAPIKeys()
+function Ereader:checkAPIKeys()
        -- Check if API keys are available
        local secrets = require("lib/ffi_secrets")
        if not secrets.has_secrets() then
@@ -139,12 +137,12 @@ function Instapaper:checkAPIKeys()
        return true
 end
 
-function Instapaper:showLoginDialog()
+function Ereader:showLoginDialog()
     -- DEVELOPMENT ONLY: Pre-fill credentials for testing
     local stored_username, stored_password = loadDevCredentials()
 
     self.list_view = KeyValuePage:new{
-        title = _("Instapaper"),
+        title = _("eReader"),
         value_overflow_align = "right",
         callback_return = function()
             UIManager:close(self.list_view)
@@ -378,7 +376,7 @@ function ArticleItem:onSwipe(arg, ges_ev)
     return false -- Let the event bubble up to parent
 end
 
-function Instapaper:showArticles()
+function Ereader:showArticles()
     if self.list_view then
         UIManager:close(self.list_view)
     end
@@ -386,7 +384,7 @@ function Instapaper:showArticles()
     -- Get articles from database store
     local articles = self.instapaperManager:getArticles()
     
-    logger.dbg("instapaper: Got", #articles, "articles from database")
+    logger.dbg("ereader: Got", #articles, "articles from database")
     
     -- Create article item widgets
     local items = {}
@@ -432,7 +430,7 @@ function Instapaper:showArticles()
     local header = TitleBar:new{
         width = width,
         align = "left",
-        title = _("Instapaper"),
+        title = _("eReader"),
         subtitle = #articles .. " articles",
         subtitle_face = Font:getFace("xx_smallinfofont", 14),
         title_top_padding = Screen:scaleBySize(4),
@@ -447,7 +445,7 @@ function Instapaper:showArticles()
         right_icon = "close",
         right_icon_tap_callback = function()
             UIManager:show(ConfirmBox:new{
-                text = _("Quit Instapaper and return to Kobo?"),
+                text = _("Quit eReader and return to Kobo?"),
                 icon = "notice-question",
                 ok_text = _("Quit"),
                 cancel_text = _("Cancel"),
@@ -519,7 +517,7 @@ function Instapaper:showArticles()
     UIManager:show(self.list_view)
 end
 
-function Instapaper:showMenu()
+function Ereader:showMenu()
     local last_sync = self.instapaperManager:getLastSyncTime()
     local sync_string = "Sync"
     if last_sync then
@@ -579,7 +577,7 @@ function Instapaper:showMenu()
                 text = _("Exit to KOReader"),
                 callback = function()
                     UIManager:close(menu_container)
-                    -- Close the current Instapaper UI
+                    -- Close the current Ereader UI
                     if self.list_view then
                         UIManager:close(self.list_view)
                     end
@@ -593,7 +591,7 @@ function Instapaper:showMenu()
     UIManager:show(menu_container)
 end
 
-function Instapaper:showArticleContent(article)
+function Ereader:showArticleContent(article)
     -- Show loading message
     local info = InfoMessage:new{ text = _("Downloading article...") }
     UIManager:show(info)
@@ -619,7 +617,7 @@ function Instapaper:showArticleContent(article)
             return
         end
         
-        -- Store the current article for the ReaderUI module
+        -- Store the current article for the ReaderEreader module
         self.current_article = article
         
         -- Open the stored HTML file directly in KOReader
@@ -631,23 +629,21 @@ function Instapaper:showArticleContent(article)
         doc_settings:flush()
         ReaderUI:showReader(file_path)
 
-        -- Register our Instapaper module after ReaderUI is created
+        -- Register our Ereader module after ReaderEreader is created
         UIManager:scheduleIn(0.1, function()
             if ReaderUI.instance then
-                local ReaderInstapaper = require("readerui")
-                local module_instance = ReaderInstapaper:new{
+                local ReaderEreader = require("readerereader")
+                local module_instance = ReaderEreader:new{
                     ui = ReaderUI.instance,
                     dialog = ReaderUI.instance,
                     view = ReaderUI.instance.view,
                     document = ReaderUI.instance.document,
                     refresh_callback = function()
-                        -- Refresh the Instapaper list view when returning from reader
+                        -- Refresh the Ereader list view when returning from reader
                         self:showArticles()
                     end,
                 }
-                ReaderUI.instance:registerModule("readerinstapaper", module_instance)
-                logger.dbg("Instapaper: Registered ReaderInstapaper module")
-                logger.dbg("Instapaper: on instance:", tostring(ReaderUI.instance))
+                ReaderUI.instance:registerModule("readerereader", module_instance)
             end
         end)
 
@@ -656,8 +652,8 @@ function Instapaper:showArticleContent(article)
     end)
 end
 
---- Handler for our button in the ReaderUI's link menu
-function Instapaper:onAddToInstapaper(url)
+--- Handler for our button in the ReaderEreader's link menu
+function Ereader:onAddToInstapaper(url)
     local success, error_message, did_enqueue = self.instapaperManager:addArticle(url)
 
     if success then
@@ -675,7 +671,7 @@ function Instapaper:onAddToInstapaper(url)
     return true
 end
 
-function Instapaper:onKeyPress(key, mods, is_repeat)
+function Ereader:onKeyPress(key, mods, is_repeat)
 
     if Device:isEmulator() and (key.key == "F4") then
         for l, v in pairs(key.modifiers) do
@@ -691,4 +687,4 @@ function Instapaper:onKeyPress(key, mods, is_repeat)
     return false
 end
 
-return Instapaper
+return Ereader

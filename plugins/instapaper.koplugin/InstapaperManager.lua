@@ -52,18 +52,18 @@ function InstapaperManager:logout()
     -- Clean up thumbnail files
     self:clearThumbnails()
     
-    logger.dbg("instapaper: Logged out and cleared tokens")
+    logger.dbg("ereader: Logged out and cleared tokens")
 end
 
 function InstapaperManager:clearThumbnails()
     local DataStorage = require("datastorage")
     local lfs = require("libs/libkoreader-lfs")
     
-    local thumbnail_dir = DataStorage:getDataDir() .. "/instapaper/thumbnails"
+    local thumbnail_dir = DataStorage:getDataDir() .. "/ereader/instapaper/thumbnails"
     
     -- Check if thumbnail directory exists
     if not lfs.attributes(thumbnail_dir, "mode") then
-        logger.dbg("instapaper: No thumbnail directory to clean up")
+        logger.dbg("ereader: No thumbnail directory to clean up")
         return
     end
     
@@ -76,7 +76,7 @@ function InstapaperManager:clearThumbnails()
             if success then
                 count = count + 1
             else
-                logger.warn("instapaper: Failed to remove thumbnail file:", filepath, err)
+                logger.warn("ereader: Failed to remove thumbnail file:", filepath, err)
             end
         end
     end
@@ -84,25 +84,25 @@ function InstapaperManager:clearThumbnails()
     -- Try to remove the thumbnail directory itself
     lfs.rmdir(thumbnail_dir)
     
-    logger.dbg("instapaper: Cleaned up", count, "thumbnail files")
+    logger.dbg("ereader: Cleaned up", count, "thumbnail files")
 end
 
 function InstapaperManager:authenticate(username, password)
     if not username or not password then
-        logger.err("instapaper: Username and password required for authentication")
+        logger.err("ereader: Username and password required for authentication")
         return false
     end
     
-    logger.dbg("instapaper: Starting OAuth xAuth authentication for user:", username)
+    logger.dbg("ereader: Starting OAuth xAuth authentication for user:", username)
     
     local success, params, error_message = self.instapaper_api_manager:authenticate(username, password)
     
     if success and params then
-        logger.dbg("instapaper: Authentication successful")
+        logger.dbg("ereader: Authentication successful")
         
         return true, nil
     else
-        logger.err("instapaper: Authentication failed:", error_message)
+        logger.err("ereader: Authentication failed:", error_message)
         
         return false, error_message
     end
@@ -110,23 +110,23 @@ end
 
 function InstapaperManager:syncReads()
     if not self:isAuthenticated() then
-        logger.err("instapaper: Cannot sync reads - not authenticated")
+        logger.err("ereader: Cannot sync reads - not authenticated")
         return false
     end
     
-    logger.dbg("instapaper: Syncing reads from Instapaper...")
+    logger.dbg("ereader: Syncing reads from Instapaper...")
     
     -- Process any queued offline requests first
     local queue_errors = self.instapaper_api_manager:processQueuedRequests()
     if #queue_errors > 0 then
-        logger.warn("instapaper: Some queued requests failed:", #queue_errors, "errors")
+        logger.warn("ereader: Some queued requests failed:", #queue_errors, "errors")
         for _, error_info in ipairs(queue_errors) do
-            logger.warn("instapaper: Queued request failed:", error_info.error)
+            logger.warn("ereader: Queued request failed:", error_info.error)
         end
     end
     
     local existing_bookmark_ids = self.storage:getAllUnarchivedBookmarkIds(false)
-    logger.dbg("instapaper: Found", #existing_bookmark_ids, "existing articles in database")
+    logger.dbg("ereader: Found", #existing_bookmark_ids, "existing articles in database")
     
     -- Call API with 'have' parameter to get new articles and deleted IDs
     -- The 'have' parameter tells Instapaper which articles we already have,
@@ -152,15 +152,15 @@ function InstapaperManager:syncReads()
                 if delete_success then
                     deleted_count = deleted_count + 1
                 else
-                    logger.warn("instapaper: Failed to delete article:", bookmark_id)
+                    logger.warn("ereader: Failed to delete article:", bookmark_id)
                 end
             end
         end
         
-        logger.dbg("instapaper: Successfully synced", new_count, "new articles, deleted", deleted_count, "articles")
+        logger.dbg("ereader: Successfully synced", new_count, "new articles, deleted", deleted_count, "articles")
         return true, nil
     else
-        logger.err("instapaper: Failed to sync reads:", error_message)
+        logger.err("ereader: Failed to sync reads:", error_message)
         return false, error_message
     end
 end
@@ -207,11 +207,11 @@ function InstapaperManager:processHtmlImages(html_content, bookmark_id)
                     local new_attrs = img_attrs:gsub('src="([^"]+)"', string.format('src="%s"', data_uri))
                     return string.format('<img%s>', new_attrs)
                 else
-                    logger.warn("instapaper: Failed to convert image to data URI, removing img tag:", src)
+                    logger.warn("ereader: Failed to convert image to data URI, removing img tag:", src)
                     return ""
                 end
             else
-                logger.warn("instapaper: Failed to download image, removing img tag:", src)
+                logger.warn("ereader: Failed to download image, removing img tag:", src)
                 return ""
             end
         end
@@ -223,7 +223,7 @@ end
 
 function InstapaperManager:downloadImage(url, max_size)
     if not NetworkMgr:isOnline() then
-        logger.warn("instapaper: No network connectivity available")
+        logger.warn("ereader: No network connectivity available")
         return nil, nil
     end
     
@@ -238,34 +238,34 @@ function InstapaperManager:downloadImage(url, max_size)
     local code, headers, status = socket.skip(1, http.request(request))
     socketutil:reset_timeout()
     if code == socketutil.TIMEOUT_CODE or code == socketutil.SSL_HANDSHAKE_CODE or code == socketutil.SINK_TIMEOUT_CODE then
-        logger.warn("instapaper: Request interrupted:", status or code)
+        logger.warn("ereader: Request interrupted:", status or code)
         return nil, nil
     end
     if code >= 400 and code < 500 then
-        logger.warn("instapaper: HTTP error:", status or code)
+        logger.warn("ereader: HTTP error:", status or code)
         return nil, nil
     end
     if headers == nil then
-        logger.warn("instapaper: No HTTP headers:", status or code or "network unreachable")
+        logger.warn("ereader: No HTTP headers:", status or code or "network unreachable")
         return nil, nil
     end
     if code ~= 200 then
-        logger.warn("instapaper: Failed to download image:", url, "HTTP code:", code)
+        logger.warn("ereader: Failed to download image:", url, "HTTP code:", code)
         return nil, nil
     end
     local image_data = table.concat(response_body)
     if #image_data == 0 then
-        logger.warn("instapaper: Empty image data for:", url)
+        logger.warn("ereader: Empty image data for:", url)
         return nil, nil
     end
     local size_limit = max_size or 1024 * 1024
     if #image_data > size_limit then
-        logger.warn("instapaper: Image too large:", url, "size:", #image_data, "limit:", size_limit)
+        logger.warn("ereader: Image too large:", url, "size:", #image_data, "limit:", size_limit)
         return nil, nil
     end
     local content_type = headers and headers["content-type"]
     if content_type and not content_type:match("^image/") then
-        logger.warn("instapaper: Content-Type is not an image:", content_type, "for URL:", url)
+        logger.warn("ereader: Content-Type is not an image:", content_type, "for URL:", url)
         return nil, nil
     end
     return image_data, content_type
@@ -308,7 +308,7 @@ function InstapaperManager:saveThumbnailImageToFile(image_data, bookmark_id)
     
     local image_bb = RenderImage:renderImageData(image_data, #image_data)
     if not image_bb then
-        logger.warn("instapaper: Failed to render image")
+        logger.warn("ereader: Failed to render image")
         return false
     end
     
@@ -337,34 +337,34 @@ function InstapaperManager:saveThumbnailImageToFile(image_data, bookmark_id)
     thumbnail_bb:free()
         
     if save_success then
-        logger.dbg("instapaper: Saved thumbnail:", thumbnail_filename)
+        logger.dbg("ereader: Saved thumbnail:", thumbnail_filename)
         return true
     else
-        logger.warn("instapaper: Failed to save thumbnail:", thumbnail_filename, "Error:", err)
+        logger.warn("ereader: Failed to save thumbnail:", thumbnail_filename, "Error:", err)
         return false
     end
 end
 
 function InstapaperManager:addArticle(url)
     if not self:isAuthenticated() then
-        logger.err("instapaper: Cannot add article - not authenticated")
+        logger.err("ereader: Cannot add article - not authenticated")
         return false, "Not authenticated"
     end
 
-    logger.dbg("instapaper: Adding article:", url)
+    logger.dbg("ereader: Adding article:", url)
     local success, error_message, did_enqueue = self.instapaper_api_manager:addArticle(url)
     if success then
-        logger.dbg("instapaper: Successfully added article:", url)
+        logger.dbg("ereader: Successfully added article:", url)
         return true, nil, did_enqueue
     else
-        logger.err("instapaper: Failed to add article:", url)
+        logger.err("ereader: Failed to add article:", url)
         return false, error_message, false
     end
 end
 
 function InstapaperManager:downloadArticle(bookmark_id)
     if not self:isAuthenticated() then
-        logger.err("instapaper: Cannot download article - not authenticated")
+        logger.err("ereader: Cannot download article - not authenticated")
         return false, "Not authenticated"
     end
     -- Check if we already have this article
@@ -375,27 +375,27 @@ function InstapaperManager:downloadArticle(bookmark_id)
         if html_content and #html_content > 0 then
             -- Add HTML content to the existing article data
             existing.html = html_content
-            logger.dbg("instapaper: Article already downloaded:", bookmark_id)
+            logger.dbg("ereader: Article already downloaded:", bookmark_id)
             return true, existing
         else
-            logger.dbg("instapaper: Article exists but has no HTML content, will download")
+            logger.dbg("ereader: Article exists but has no HTML content, will download")
         end
     end
     -- Find the article metadata from our database store
     local article_meta = self.storage:getArticle(bookmark_id)
     if not article_meta then
-        logger.err("instapaper: Article not found in database:", bookmark_id)
+        logger.err("ereader: Article not found in database:", bookmark_id)
         return false, "Article not found"
     end
     -- Download article text from API
-    logger.dbg("instapaper: Downloading article text for:", bookmark_id)
+    logger.dbg("ereader: Downloading article text for:", bookmark_id)
     local success, html_content, error_message = self.instapaper_api_manager:getArticleText(bookmark_id)
     if not success or not html_content then
         if error_message then
-            logger.err("instapaper: Failed to download article text:", bookmark_id, ":", error_message)
+            logger.err("ereader: Failed to download article text:", bookmark_id, ":", error_message)
             return false, error_message
         else 
-            logger.err("instapaper: Failed to download article text:", bookmark_id)
+            logger.err("ereader: Failed to download article text:", bookmark_id)
             return false, "Failed to download article"
         end
     end
@@ -409,19 +409,19 @@ function InstapaperManager:downloadArticle(bookmark_id)
     -- Check if HTML already contains data URIs (images already processed)
     local has_data_uris = html_content:find("data:image/")
     if has_data_uris then
-        logger.dbg("instapaper: HTML already contains data URIs, skipping image processing")
+        logger.dbg("ereader: HTML already contains data URIs, skipping image processing")
     else
         -- Process images in the HTML content
-        logger.dbg("instapaper: Processing images in HTML content")
+        logger.dbg("ereader: Processing images in HTML content")
         html_content = self:processHtmlImages(html_content, bookmark_id)
     end
     -- Store the article
     local store_success, filename = self.storage:storeArticle(article_meta, html_content)
     if not store_success then
-        logger.err("instapaper: Failed to store article:", bookmark_id)
+        logger.err("ereader: Failed to store article:", bookmark_id)
         return false, "Failed to store article"
     end
-    logger.dbg("instapaper: Successfully downloaded and stored article:", bookmark_id)
+    logger.dbg("ereader: Successfully downloaded and stored article:", bookmark_id)
     -- Return the stored article
     local stored_article = self.storage:getArticle(bookmark_id)
     return true, stored_article
@@ -455,51 +455,51 @@ end
 
 function InstapaperManager:archiveArticle(bookmark_id)
     if not self:isAuthenticated() then
-        logger.err("instapaper: Cannot archive article - not authenticated")
+        logger.err("ereader: Cannot archive article - not authenticated")
         return false
     end
-    logger.dbg("instapaper: Archiving article:", bookmark_id)
+    logger.dbg("ereader: Archiving article:", bookmark_id)
     local success, error_message, did_enqueue = self.instapaper_api_manager:archiveArticle(bookmark_id)
     if success then
         self.storage:updateArticleStatus(bookmark_id, "archived", true)
-        logger.dbg("instapaper: Successfully archived article:", bookmark_id)
+        logger.dbg("ereader: Successfully archived article:", bookmark_id)
         return true, nil, did_enqueue
     else
-        logger.err("instapaper: Failed to archive article:", bookmark_id)
+        logger.err("ereader: Failed to archive article:", bookmark_id)
         return false, error_message, false
     end
 end
 
 function InstapaperManager:favoriteArticle(bookmark_id)
     if not self:isAuthenticated() then
-        logger.err("instapaper: Cannot favorite article - not authenticated")
+        logger.err("ereader: Cannot favorite article - not authenticated")
         return false
     end
-    logger.dbg("instapaper: Favoriting article:", bookmark_id)
+    logger.dbg("ereader: Favoriting article:", bookmark_id)
     local success, error_message, did_enqueue = self.instapaper_api_manager:favoriteArticle(bookmark_id)
     if success then
         self.storage:updateArticleStatus(bookmark_id, "starred", true)
-        logger.dbg("instapaper: Successfully favorited article:", bookmark_id)
+        logger.dbg("ereader: Successfully favorited article:", bookmark_id)
         return true, nil, did_enqueue
     else
-        logger.err("instapaper: Failed to favorite article:", bookmark_id)
+        logger.err("ereader: Failed to favorite article:", bookmark_id)
         return false, error_message, false
     end
 end
 
 function InstapaperManager:unfavoriteArticle(bookmark_id)
     if not self:isAuthenticated() then
-        logger.err("instapaper: Cannot unfavorite article - not authenticated")
+        logger.err("ereader: Cannot unfavorite article - not authenticated")
         return false
     end
-    logger.dbg("instapaper: Unfavoriting article:", bookmark_id)
+    logger.dbg("ereader: Unfavoriting article:", bookmark_id)
     local success, error_message, did_enqueue = self.instapaper_api_manager:unfavoriteArticle(bookmark_id)
     if success then
         self.storage:updateArticleStatus(bookmark_id, "starred", false)
-        logger.dbg("instapaper: Successfully unfavorited article:", bookmark_id)
+        logger.dbg("ereader: Successfully unfavorited article:", bookmark_id)
         return true, nil, did_enqueue
     else
-        logger.err("instapaper: Failed to unfavorite article:", bookmark_id)
+        logger.err("ereader: Failed to unfavorite article:", bookmark_id)
         return false, error_message, false
     end
 end

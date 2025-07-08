@@ -16,31 +16,31 @@ local _instance = nil
 
 -- Settings storage is currently used for auth credentials
 local function getSettings()
-    local settings = LuaSettings:open(DataStorage:getSettingsDir().."/instapaper.lua")
-    settings:readSetting("instapaper", {})
+    local settings = LuaSettings:open(DataStorage:getSettingsDir().."/ereader.lua")
+    settings:readSetting("ereader", {})
     return settings
 end
 
 -- Generic settings methods
 local function getSetting(key, default)
     local settings = getSettings()
-    local data = settings.data.instapaper or {}
+    local data = settings.data.ereader or {}
     return data[key] ~= nil and data[key] or default
 end
 
 local function setSetting(key, value)
     local settings = getSettings()
-    local data = settings.data.instapaper or {}
+    local data = settings.data.ereader or {}
     data[key] = value
-    settings:saveSetting("instapaper", data)
+    settings:saveSetting("ereader", data)
     settings:flush()
 end
 
 local function delSetting(key)
     local settings = getSettings()
-    local data = settings.data.instapaper or {}
+    local data = settings.data.ereader or {}
     data[key] = nil
-    settings:saveSetting("instapaper", data)
+    settings:saveSetting("ereader", data)
     settings:flush()
 end
 
@@ -55,7 +55,7 @@ function InstapaperAPIManager:instapaperAPIManager()
     -- Load API keys
     local consumer_key, consumer_secret = self:loadApiKeys()
     if not consumer_key or not consumer_secret then
-        logger.err("instapaper: Failed to load API keys")
+        logger.err("ereader: Failed to load API keys")
         return nil
     end
     
@@ -82,7 +82,7 @@ end
 
 -- Queue management functions
 function InstapaperAPIManager:getQueueSettings()
-    return LuaSettings:open(DataStorage:getSettingsDir().."/instapaper_queue.lua")
+    return LuaSettings:open(DataStorage:getSettingsDir().."/instapaper/queue.lua")
 end
 
 function InstapaperAPIManager:saveQueue(queue)
@@ -99,29 +99,29 @@ end
 
 -- Token management methods
 function InstapaperAPIManager:loadTokens()
-    return getSetting("oauth_token"), getSetting("oauth_token_secret")
+    return getSetting("instapaper_oauth_token"), getSetting("oauth_token_secret")
 end
 
 function InstapaperAPIManager:loadUsername()
-    return getSetting("username")
+    return getSetting("instapaper_username")
 end
 
 function InstapaperAPIManager:saveTokens(oauth_token, oauth_token_secret)
-    setSetting("oauth_token", oauth_token)
-    setSetting("oauth_token_secret", oauth_token_secret)
+    setSetting("instapaper_oauth_token", oauth_token)
+    setSetting("instapaper_oauth_token_secret", oauth_token_secret)
     self.oauth_token = oauth_token
     self.oauth_token_secret = oauth_token_secret
 end
 
 function InstapaperAPIManager:saveUsername(username)
-    setSetting("username", username)
+    setSetting("instapaper_username", username)
     self.username = username
 end
 
 function InstapaperAPIManager:cleanAll()
-    delSetting("oauth_token")
-    delSetting("oauth_token_secret")
-    delSetting("username")
+    delSetting("instapaper_oauth_token")
+    delSetting("instapaper_oauth_token_secret")
+    delSetting("instapaper_username")
     self.oauth_token = nil
     self.oauth_token_secret = nil
     self.username = nil
@@ -145,7 +145,7 @@ function InstapaperAPIManager:loadApiKeys()
     local consumer_key, consumer_secret = secrets.get_secrets()
     
     if not consumer_key or not consumer_secret then
-        logger.err("instapaper: Failed to load API keys from any source")
+        logger.err("ereader: Failed to load API keys from any source")
         return nil, nil
     end
     
@@ -370,7 +370,7 @@ function InstapaperAPIManager:executeRequest(request)
     else
         local error_message = nil
 
-        logger.err("instapaper: Request failed with code:", code, "response:", body)
+        logger.err("ereader: Request failed with code:", code, "response:", body)
         if body then
             local decodesuccess, output = pcall(JSON.decode, body)
 
@@ -472,7 +472,7 @@ function InstapaperAPIManager:getArticles(limit, have)
             local articles = {}
             local deleted_ids = {}
             for _, item in ipairs(output) do
-                logger.dbg("instapaper: item.type", item.type)
+                logger.dbg("ereader: item.type", item.type)
                 if item.type == "bookmark" then
                     if item.starred and (item.starred == 1 or item.starred == "1")  then
                         -- instapaper API (sometimes?) returns starred as a string, which is "fun"
@@ -483,7 +483,7 @@ function InstapaperAPIManager:getArticles(limit, have)
 
                     table.insert(articles, item)
                 elseif item.type == "meta" then
-                    logger.dbg("instapaper: deleted_ids", item.delete_ids)
+                    logger.dbg("ereader: deleted_ids", item.delete_ids)
                     -- Despite API docs, Instapaper currently returns deleted_ids as a comma-separated string of deleted IDs
                     if type(item.delete_ids) == "string" and item.delete_ids ~= "" then
                         for id_str in item.delete_ids:gmatch("([^,]+)") do
@@ -557,7 +557,7 @@ function InstapaperAPIManager:addToQueue(url, params)
     }
     table.insert(self.queued_requests, queued_request)
     self:saveQueue(self.queued_requests)
-    logger.dbg("instapaper: Added request to queue, queue size:", #self.queued_requests)
+    logger.dbg("ereader: Added request to queue, queue size:", #self.queued_requests)
 end
 
 function InstapaperAPIManager:processQueuedRequests()
@@ -565,7 +565,7 @@ function InstapaperAPIManager:processQueuedRequests()
         return {}
     end
     
-    logger.dbg("instapaper: Processing", #self.queued_requests, "queued requests")
+    logger.dbg("ereader: Processing", #self.queued_requests, "queued requests")
     
     local errors = {}
     local processed_count = 0
@@ -583,14 +583,14 @@ function InstapaperAPIManager:processQueuedRequests()
         if success then
             table.remove(self.queued_requests, i)
             processed_count = processed_count + 1
-            logger.dbg("instapaper: Successfully processed queued request")
+            logger.dbg("ereader: Successfully processed queued request")
         else
             table.insert(errors, {
                 url = queued_request.url,
                 params = queued_request.params,
                 error = error_message or "Unknown error"
             })
-            logger.warn("instapaper: Failed to process queued request:", error_message)
+            logger.warn("ereader: Failed to process queued request:", error_message)
             i = i + 1 -- Move to next request
         end
     end
@@ -598,7 +598,7 @@ function InstapaperAPIManager:processQueuedRequests()
     -- Save updated queue
     self:saveQueue(self.queued_requests)
     
-    logger.dbg("instapaper: Processed", processed_count, "requests,", #errors, "errors")
+    logger.dbg("ereader: Processed", processed_count, "requests,", #errors, "errors")
     return errors
 end
 

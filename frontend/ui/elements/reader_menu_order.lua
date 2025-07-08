@@ -179,7 +179,7 @@ local order = {
         "progress_sync",
         "move_to_archive",
         "wallabag",
-        "instapaper",
+        "ereader",
         "news_downloader",
         "text_editor",
         "profiles",

@@ -44,8 +44,9 @@ function Storage:new()
     setmetatable(o, self)
     self.__index = self
     
-    o.db_location = DataStorage:getSettingsDir() .. "/instapaper.sqlite"
-    o.articles_dir = DataStorage:getFullDataDir() .. "/instapaper"
+    o.base_dir = DataStorage:getSettingsDir() .. "/ereader"
+    o.db_location = o.base_dir .. "/instapaper.sqlite"
+    o.articles_dir = o.base_dir .. "/instapaper"
     o.db_conn = nil
     o.initialized = false
     
@@ -57,12 +58,17 @@ function Storage:init()
         return
     end
     
-    logger.dbg("Instapaper: Initializing storage at", self.db_location)
+    logger.dbg("ereader: Initializing storage at", self.db_location)
     
+    -- Ensure base directory exists before creating articles directory
+    if not lfs.attributes(self.base_dir, "mode") then
+        lfs.mkdir(self.base_dir)
+        logger.dbg("ereader: Created base directory:", self.base_dir)
+    end
     -- Create articles directory if it doesn't exist
     if not lfs.attributes(self.articles_dir, "mode") then
         lfs.mkdir(self.articles_dir)
-        logger.dbg("Instapaper: Created articles directory:", self.articles_dir)
+        logger.dbg("ereader: Created articles directory:", self.articles_dir)
     end
     
     -- Initialize database
@@ -107,18 +113,18 @@ function Storage:createDB()
             -- Set the new version
             db_conn:exec(string.format("PRAGMA user_version=%d;", DB_SCHEMA_VERSION))
             
-            logger.dbg("Instapaper: Database upgraded and recreated")
+            logger.dbg("ereader: Database upgraded and recreated")
         else
             -- Schema is up to date, just close and return
             db_conn:close()
-            logger.dbg("Instapaper: Database schema is up to date")
+            logger.dbg("ereader: Database schema is up to date")
             return
         end
         
         db_conn:close()
     else
         -- Database doesn't exist, create new one
-        logger.dbg("Instapaper: Creating new database")
+        logger.dbg("ereader: Creating new database")
         local db_conn = SQ3.open(self.db_location)
         
         -- Make it WAL if possible for better concurrency
@@ -135,10 +141,10 @@ function Storage:createDB()
         db_conn:exec(string.format("PRAGMA user_version=%d;", DB_SCHEMA_VERSION))
         
         db_conn:close()
-        logger.dbg("Instapaper: New database created")
+        logger.dbg("ereader: New database created")
     end
     
-    logger.dbg("Instapaper: Database initialized at", self.db_location)
+    logger.dbg("ereader: Database initialized at", self.db_location)
 end
 
 function Storage:openDB()
@@ -169,7 +175,7 @@ function Storage:storeArticle(article_data, html_content)
     -- Write HTML file
     local file = io.open(filepath, "w")
     if not file then
-        logger.err("Instapaper: Failed to create HTML file:", filepath)
+        logger.err("ereader: Failed to create HTML file:", filepath)
         self:closeDB()
         return false, "Failed to create HTML file"
     end
@@ -201,7 +207,7 @@ function Storage:storeArticle(article_data, html_content)
                 if t == "boolean" then
                     v = v and 1 or 0
                 elseif t ~= "string" and t ~= "number" then
-                    logger.err("Instapaper: Skipping field " .. k .. " of unsupported type: " .. t)
+                    logger.err("ereader: Skipping field " .. k .. " of unsupported type: " .. t)
                     goto continue
                 end
                 table.insert(fields, k .. " = ?")
@@ -226,12 +232,12 @@ function Storage:storeArticle(article_data, html_content)
             stmt:reset():bind(table.unpack(values)):step()
         end)
         if not ok then
-            logger.err("Instapaper: Failed to update article metadata:", err)
+            logger.err("ereader: Failed to update article metadata:", err)
             self:closeDB()
             return false, "Failed to update article metadata: " .. tostring(err)
         end
         self:closeDB()
-        logger.dbg("Instapaper: Updated article:", article_data.title, "as", filename)
+        logger.dbg("ereader: Updated article:", article_data.title, "as", filename)
         return true, filename
     else
         -- Insert new article (full set of fields)
@@ -261,13 +267,13 @@ function Storage:storeArticle(article_data, html_content)
             ):step()
         end)
         if not ok then
-            logger.err("Instapaper: Failed to store article metadata:", err)
+            logger.err("ereader: Failed to store article metadata:", err)
             os.remove(filepath)
             self:closeDB()
             return false, "Failed to store article metadata: " .. tostring(err)
         end
         self:closeDB()
-        logger.dbg("Instapaper: Stored article:", article_data.title, "as", filename)
+        logger.dbg("ereader: Stored article:", article_data.title, "as", filename)
         return true, filename
     end
 end
@@ -307,13 +313,13 @@ function Storage:storeArticleMetadata(article_data)
     end)
     
     if not ok then
-        logger.err("Instapaper: Failed to store article metadata:", err)
+        logger.err("ereader: Failed to store article metadata:", err)
         self:closeDB()
         return false, "Failed to store article metadata: " .. tostring(err)
     end
     
     self:closeDB()
-    logger.dbg("Instapaper: Stored article metadata:", article_data.title, "with bookmark_id:", article_data.bookmark_id)
+    logger.dbg("ereader: Stored article metadata:", article_data.title, "with bookmark_id:", article_data.bookmark_id)
     return true
 end
 
@@ -387,7 +393,7 @@ function Storage:updateProgress(bookmark_id, progress)
     end)
     
     if not ok then
-        logger.err("Instapaper: Failed to update progress:", err)
+        logger.err("ereader: Failed to update progress:", err)
         self:closeDB()
         return false
     end
@@ -435,7 +441,7 @@ function Storage:getArticles()
     end
     
     self:closeDB()
-    logger.dbg("Instapaper: Retrieved", #articles, "articles from database")
+    logger.dbg("ereader: Retrieved", #articles, "articles from database")
     return articles
 end
 
@@ -455,7 +461,7 @@ function Storage:getAllUnarchivedBookmarkIds()
     end
     
     self:closeDB()
-    logger.dbg("Instapaper: Retrieved", #bookmark_ids, "bookmark IDs from database")
+    logger.dbg("ereader: Retrieved", #bookmark_ids, "bookmark IDs from database")
     return bookmark_ids
 end
 
@@ -481,7 +487,7 @@ function Storage:deleteArticle(bookmark_id)
     end)
     
     if not ok then
-        logger.err("Instapaper: Failed to delete article from database:", err)
+        logger.err("ereader: Failed to delete article from database:", err)
         self:closeDB()
         return false, err
     end
@@ -491,21 +497,21 @@ function Storage:deleteArticle(bookmark_id)
         local filepath = self.articles_dir .. "/" .. html_filename
         local success, err = os.remove(filepath)
         if not success and err ~= "No such file or directory" then
-            logger.warn("Instapaper: Failed to delete HTML file:", filepath, err)
+            logger.warn("ereader: Failed to delete HTML file:", filepath, err)
         end
     end
     
     -- Delete thumbnail if it exists
     local DataStorage = require("datastorage")
-    local thumbnail_path = string.format("%s/instapaper/thumbnails/%s_thumbnail.jpg", 
+    local thumbnail_path = string.format("%s/ereader/instapaper/thumbnails/%s_thumbnail.jpg", 
         DataStorage:getDataDir(), bookmark_id)
     local success, err = os.remove(thumbnail_path)
     if not success and err ~= "No such file or directory" then
-        logger.warn("Instapaper: Failed to delete thumbnail:", thumbnail_path, err)
+        logger.warn("ereader: Failed to delete thumbnail:", thumbnail_path, err)
     end
     
     self:closeDB()
-    logger.dbg("Instapaper: Deleted article with bookmark_id:", bookmark_id)
+    logger.dbg("ereader: Deleted article with bookmark_id:", bookmark_id)
     return true
 end
 
@@ -535,7 +541,7 @@ function Storage:clearAll()
     self.db_conn:exec("DELETE FROM articles")
     
     self:closeDB()
-    logger.dbg("Instapaper: Cleared all articles from database and filesystem")
+    logger.dbg("ereader: Cleared all articles from database and filesystem")
 end
 
 -- Get the last sync time from the database
@@ -565,7 +571,7 @@ function Storage:updateArticleStatus(bookmark_id, status_type, value)
         field = "is_archived"
     else
         self:closeDB()
-        logger.err("Instapaper: Unknown status_type for updateArticleStatus: " .. tostring(status_type))
+        logger.err("ereader: Unknown status_type for updateArticleStatus: " .. tostring(status_type))
         return false, "Unknown status_type: " .. tostring(status_type)
     end
     
@@ -577,12 +583,12 @@ function Storage:updateArticleStatus(bookmark_id, status_type, value)
         stmt:reset():bind(value and 1 or 0, os.time(), bookmark_id):step()
     end)
     if not ok then
-        logger.err("Instapaper: Failed to update article status:", err)
+        logger.err("ereader: Failed to update article status:", err)
         self:closeDB()
         return false, err
     end
     self:closeDB()
-    logger.dbg("Instapaper: Updated article status:", bookmark_id, field, value)
+    logger.dbg("ereader: Updated article status:", bookmark_id, field, value)
     return true
 end
 

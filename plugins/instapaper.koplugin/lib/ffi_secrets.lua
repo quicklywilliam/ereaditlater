@@ -13,15 +13,15 @@ local function try_load_compiled_library()
     end)
     
     if success then
-        logger.dbg("instapaper: Successfully loaded compiled secrets library")
+        logger.dbg("ereader: Successfully loaded compiled secrets library")
         ffi.cdef[[
             const char *get_instapaper_consumer_key();
             const char *get_instapaper_consumer_secret();
             ]]
         return instapapersecrets
     else
-        logger.dbg("instapaper: Failed to load compiled secrets library:", lib)
-        logger.dbg("instapaper: This is expected if the library is not available for this platform")
+        logger.dbg("ereader: Failed to load compiled secrets library:", lib)
+        logger.dbg("ereader: This is expected if the library is not available for this platform")
         return nil
     end
 end
@@ -34,7 +34,7 @@ local function try_read_text_file()
     
     local file = io.open(secrets_path, "r")
     if not file then
-        logger.dbg("instapaper: Could not open secrets.txt at " .. secrets_path)
+        logger.dbg("ereader: Could not open secrets.txt at " .. secrets_path)
         return nil, nil
     end
     
@@ -54,11 +54,11 @@ local function try_read_text_file()
     end
     
     if consumer_key == "" or consumer_secret == "" then
-        logger.dbg("instapaper: Could not find both consumer_key and consumer_secret in secrets.txt")
+        logger.dbg("ereader: Could not find both consumer_key and consumer_secret in secrets.txt")
         return nil, nil
     end
     
-    logger.dbg("instapaper: Successfully loaded secrets from text file at " .. secrets_path)
+    logger.dbg("ereader: Successfully loaded secrets from text file at " .. secrets_path)
     return consumer_key, consumer_secret
 end
 
@@ -75,7 +75,7 @@ function M.get_secrets()
         if success and key and secret and key ~= "" and secret ~= "" then
             return key, secret
         else
-            logger.dbg("instapaper: Compiled library returned empty or invalid secrets")
+            logger.dbg("ereader: Compiled library returned empty or invalid secrets")
         end
     end
     
