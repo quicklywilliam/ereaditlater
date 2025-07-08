@@ -113,6 +113,8 @@ local lfs = require("libs/libkoreader-lfs")
 local file
 local directory
 local Profiler = nil
+-- Add instapaper launch flag
+local launch_instapaper = false
 local ARGV = arg
 local argidx = 1
 while argidx <= #ARGV do
@@ -134,6 +136,9 @@ while argidx <= #ARGV do
     elseif arg == "-p" then
         Profiler = require("jit.p")
         Profiler.start("la")
+    -- Handle new instapaper option
+    elseif arg == "-instapaper" then
+        launch_instapaper = true
     else
         -- not a recognized option, should be a filename or directory
         local sanitized_path = getPathFromURI(arg)
@@ -179,8 +184,6 @@ if fontmap ~= nil then
 end
 
 local UIManager = require("ui/uimanager")
-local PluginLoader = require("pluginloader")
-
 -- Apply developer patches
 userpatch.applyPatches(userpatch.late)
 
@@ -215,35 +218,102 @@ if G_reader_settings:isTrue("color_rendering") and not Device:hasColorScreen() t
     })
 end
 
--- === Instapaper as Startup App ===
-local exit_code
-local ok, PluginLoader = pcall(require, "pluginloader")
-if ok and PluginLoader then
-    local enabled_plugins = PluginLoader:loadPlugins()
-    local instapaper_plugin
-    for _, plugin in ipairs(enabled_plugins) do
-        if plugin.name == "instapaper" then
-            local ok2, instance = PluginLoader:createPluginInstance(plugin)
-            if ok2 and instance then
-                instapaper_plugin = instance
+-- Get which file to start with
+local last_file = G_reader_settings:readSetting("lastfile")
+local start_with = G_reader_settings:readSetting("start_with") or "filemanager"
+
+-- Helpers
+local function retryLastFile()
+    local ConfirmBox = require("ui/widget/confirmbox")
+    return ConfirmBox:new{
+        text = _("Cannot open last file.\nThis could be because it was deleted or because external storage is still being mounted.\nDo you want to retry?"),
+        ok_callback = function()
+            if lfs.attributes(last_file, "mode") ~= "file" then
+                UIManager:show(retryLastFile())
             end
-            break
+        end,
+        cancel_callback = function()
+            start_with = "filemanager"
+        end,
+    }
+end
+
+-- Start app
+local exit_code
+if launch_instapaper then
+    -- Instapaper as Startup App
+    local ok, PluginLoader = pcall(require, "pluginloader")
+    if ok and PluginLoader then
+        local enabled_plugins = PluginLoader:loadPlugins()
+        local instapaper_plugin
+        for _, plugin in ipairs(enabled_plugins) do
+            if plugin.name == "instapaper" then
+                local ok2, instance = PluginLoader:createPluginInstance(plugin)
+                if ok2 and instance then
+                    instapaper_plugin = instance
+                end
+                break
+            end
         end
-    end
-    if instapaper_plugin then
-        instapaper_plugin:showUI()
-        exit_code = UIManager:run()
+        if instapaper_plugin then
+            instapaper_plugin:showUI()
+            exit_code = UIManager:run()
+        else
+            -- Fallback: show error and exit
+            local InfoMessage = require("ui/widget/infomessage")
+            UIManager:show(InfoMessage:new{ text = "Failed to load Instapaper plugin." })
+            exit_code = UIManager:run()
+        end
     else
         -- Fallback: show error and exit
         local InfoMessage = require("ui/widget/infomessage")
-        UIManager:show(InfoMessage:new{ text = "Failed to load Instapaper plugin." })
+        UIManager:show(InfoMessage:new{ text = "Failed to load PluginLoader." })
         exit_code = UIManager:run()
     end
 else
-    -- Fallback: show error and exit
-    local InfoMessage = require("ui/widget/infomessage")
-    UIManager:show(InfoMessage:new{ text = "Failed to load PluginLoader." })
-    exit_code = UIManager:run()
+    if file then
+        local ReaderUI = require("apps/reader/readerui")
+        ReaderUI:showReader(file)
+        exit_code = UIManager:run()
+    elseif directory then
+        local FileManager = require("apps/filemanager/filemanager")
+        FileManager:showFiles(directory)
+        exit_code = UIManager:run()
+    else
+        local QuickStart = require("ui/quickstart")
+        if not QuickStart:isShown() then
+            start_with = "last"
+            last_file = QuickStart:getQuickStart()
+        end
+        if start_with == "last" and last_file and lfs.attributes(last_file, "mode") ~= "file" then
+            UIManager:show(retryLastFile())
+            -- We'll want to return from this without actually quitting,
+            -- so this is a slightly mangled UIManager:run() call to coerce the main loop into submission...
+            -- We'll call :run properly in either of the following branches once returning.
+            UIManager:runOnce()
+        end
+        if start_with == "last" and last_file then
+            local ReaderUI = require("apps/reader/readerui")
+            -- Instantiate RD
+            ReaderUI:showReader(last_file)
+            exit_code = UIManager:run()
+        else
+            local FileManager = require("apps/filemanager/filemanager")
+            local home_dir = G_reader_settings:readSetting("home_dir") or Device.home_dir or lfs.currentdir()
+            -- Instantiate FM
+            FileManager:showFiles(home_dir)
+            -- Always open FM modules on top of filemanager, so closing 'em doesn't result in an exit
+            -- because of an empty widget stack, and so they can interact with the FM instance as expected.
+            if start_with == "history" then
+                FileManager.instance.history:onShowHist()
+            elseif start_with == "favorites" then
+                FileManager.instance.collections:onShowColl()
+            elseif start_with == "folder_shortcuts" then
+                FileManager.instance.folder_shortcuts:onShowFolderShortcutsDialog()
+            end
+            exit_code = UIManager:run()
+        end
+    end
 end
 
 -- Exit
