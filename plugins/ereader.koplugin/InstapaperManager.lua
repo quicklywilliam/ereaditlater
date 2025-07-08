@@ -49,42 +49,9 @@ function InstapaperManager:logout()
     self.instapaper_api_manager:cleanAll()
     self.storage:clearAll()
     
-    -- Clean up thumbnail files
-    self:clearThumbnails()
+
     
     logger.dbg("ereader: Logged out and cleared tokens")
-end
-
-function InstapaperManager:clearThumbnails()
-    local DataStorage = require("datastorage")
-    local lfs = require("libs/libkoreader-lfs")
-    
-    local thumbnail_dir = DataStorage:getDataDir() .. "/ereader/instapaper/thumbnails"
-    
-    -- Check if thumbnail directory exists
-    if not lfs.attributes(thumbnail_dir, "mode") then
-        logger.dbg("ereader: No thumbnail directory to clean up")
-        return
-    end
-    
-    -- Remove all thumbnail files
-    local count = 0
-    for file in lfs.dir(thumbnail_dir) do
-        if file ~= "." and file ~= ".." and file:match("_thumbnail%.jpg$") then
-            local filepath = thumbnail_dir .. "/" .. file
-            local success, err = os.remove(filepath)
-            if success then
-                count = count + 1
-            else
-                logger.warn("ereader: Failed to remove thumbnail file:", filepath, err)
-            end
-        end
-    end
-    
-    -- Try to remove the thumbnail directory itself
-    lfs.rmdir(thumbnail_dir)
-    
-    logger.dbg("ereader: Cleaned up", count, "thumbnail files")
 end
 
 function InstapaperManager:authenticate(username, password)
@@ -198,7 +165,7 @@ function InstapaperManager:processHtmlImages(html_content, bookmark_id)
             local image_data, content_type = self:downloadImageWithFallback(src, 1024 * 1024)
             if image_data then
                 if not thumbnail_saved then
-                    if self:saveThumbnailImageToFile(image_data, bookmark_id) then
+                    if self.storage:saveThumbnailImageToFile(image_data, bookmark_id) then
                         thumbnail_saved = true
                     end
                 end
@@ -301,49 +268,7 @@ function InstapaperManager:saveImageToDataUri(image_data, content_type, url)
     return string.format("data:%s;base64,%s", mime_type, base64_data)
 end
 
-function InstapaperManager:saveThumbnailImageToFile(image_data, bookmark_id)
-    local RenderImage = require("ui/renderimage")
-    local DataStorage = require("datastorage")
-    local lfs = require("libs/libkoreader-lfs")
-    
-    local image_bb = RenderImage:renderImageData(image_data, #image_data)
-    if not image_bb then
-        logger.warn("ereader: Failed to render image")
-        return false
-    end
-    
-    -- Crop
-    local orig_w, orig_h = image_bb:getWidth(), image_bb:getHeight()
-    local crop_size = math.min(orig_w, orig_h)
-    local crop_x = math.floor((orig_w - crop_size) / 2)
-    local crop_y = math.floor((orig_h - crop_size) / 2)
-    
-    local cropped_bb = image_bb:viewport(crop_x, crop_y, crop_size, crop_size)
-    
-    -- Scale
-    local thumbnail_bb = RenderImage:scaleBlitBuffer(cropped_bb, 90, 90)
-    
-    -- Save
-    local thumbnail_dir = DataStorage:getDataDir() .. "/instapaper/thumbnails"
-    if not lfs.attributes(thumbnail_dir, "mode") then 
-        lfs.mkdir(thumbnail_dir)
-    end
-    local thumbnail_filename = string.format("%s/%s_thumbnail.jpg", thumbnail_dir, bookmark_id)
 
-    local save_success, err = thumbnail_bb:writeToFile(thumbnail_filename, "jpg", 85)
-    
-    image_bb:free()
-    cropped_bb:free()
-    thumbnail_bb:free()
-        
-    if save_success then
-        logger.dbg("ereader: Saved thumbnail:", thumbnail_filename)
-        return true
-    else
-        logger.warn("ereader: Failed to save thumbnail:", thumbnail_filename, "Error:", err)
-        return false
-    end
-end
 
 function InstapaperManager:addArticle(url)
     if not self:isAuthenticated() then
@@ -509,19 +434,7 @@ function InstapaperManager:getArticleMetadata(bookmark_id)
 end
 
 function InstapaperManager:getArticleThumbnail(bookmark_id)
-    local DataStorage = require("datastorage")
-    local lfs = require("libs/libkoreader-lfs")
-    
-    -- Generate thumbnail filename
-    local thumbnail_filename = string.format("%s/instapaper/thumbnails/%s_thumbnail.jpg", 
-        DataStorage:getDataDir(), bookmark_id)
-    
-    -- Check if thumbnail file exists
-    if lfs.attributes(thumbnail_filename, "mode") then
-        return thumbnail_filename
-    else
-        return nil
-    end
+    return self.storage:getArticleThumbnail(bookmark_id)
 end
 
 return InstapaperManager

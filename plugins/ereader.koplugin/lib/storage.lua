@@ -46,7 +46,8 @@ function Storage:new()
     
     o.base_dir = DataStorage:getSettingsDir() .. "/ereader"
     o.db_location = o.base_dir .. "/instapaper.sqlite"
-    o.articles_dir = o.base_dir .. "/instapaper"
+    o.instapaper_dir = o.base_dir .. "/instapaper"
+    o.thumbnail_dir = o.instapaper_dir .. "/thumbnails"
     o.db_conn = nil
     o.initialized = false
     
@@ -66,9 +67,15 @@ function Storage:init()
         logger.dbg("ereader: Created base directory:", self.base_dir)
     end
     -- Create articles directory if it doesn't exist
-    if not lfs.attributes(self.articles_dir, "mode") then
-        lfs.mkdir(self.articles_dir)
-        logger.dbg("ereader: Created articles directory:", self.articles_dir)
+    if not lfs.attributes(self.instapaper_dir, "mode") then
+        lfs.mkdir(self.instapaper_dir)
+        logger.dbg("ereader: Created articles directory:", self.instapaper_dir)
+    end
+
+    -- Create thumnails directory if needed
+    if not lfs.attributes(self.thumbnail_dir, "mode") then 
+        lfs.mkdir(self.thumbnail_dir)
+        logger.dbg("ereader: Created thumbnails directory:", self.thumbnail_dir)
     end
     
     -- Initialize database
@@ -170,7 +177,7 @@ end
 function Storage:storeArticle(article_data, html_content)
     self:openDB()
     local filename = self:generateFilename(article_data.bookmark_id)
-    local filepath = self.articles_dir .. "/" .. filename
+    local filepath = self.instapaper_dir .. "/" .. filename
 
     -- Write HTML file
     local file = io.open(filepath, "w")
@@ -360,7 +367,7 @@ end
 
 -- Get article HTML content
 function Storage:getArticleHTML(html_filename)
-    local filepath = self.articles_dir .. "/" .. html_filename
+    local filepath = self.instapaper_dir .. "/" .. html_filename
     local file = io.open(filepath, "r")
     if not file then
         return nil
@@ -375,7 +382,7 @@ end
 function Storage:getArticleFilePath(bookmark_id)
     local article = self:getArticle(bookmark_id)
     if article and article.html_filename then
-        return self.articles_dir .. "/" .. article.html_filename
+        return self.instapaper_dir .. "/" .. article.html_filename
     end
     return nil
 end
@@ -494,7 +501,7 @@ function Storage:deleteArticle(bookmark_id)
     
     -- Delete HTML file if it exists
     if html_filename then
-        local filepath = self.articles_dir .. "/" .. html_filename
+        local filepath = self.instapaper_dir .. "/" .. html_filename
         local success, err = os.remove(filepath)
         if not success and err ~= "No such file or directory" then
             logger.warn("ereader: Failed to delete HTML file:", filepath, err)
@@ -502,12 +509,12 @@ function Storage:deleteArticle(bookmark_id)
     end
     
     -- Delete thumbnail if it exists
-    local DataStorage = require("datastorage")
-    local thumbnail_path = string.format("%s/ereader/instapaper/thumbnails/%s_thumbnail.jpg", 
-        DataStorage:getDataDir(), bookmark_id)
-    local success, err = os.remove(thumbnail_path)
-    if not success and err ~= "No such file or directory" then
-        logger.warn("ereader: Failed to delete thumbnail:", thumbnail_path, err)
+    local thumbnail_path = self:getArticleThumbnail(bookmark_id)
+    if thumbnail_path then
+        local success, err = os.remove(thumbnail_path)
+        if not success and err ~= "No such file or directory" then
+            logger.warn("ereader: Failed to delete thumbnail:", thumbnail_path, err)
+        end
     end
     
     self:closeDB()
@@ -517,6 +524,7 @@ end
 
 -- Clear all articles from database and filesystem
 function Storage:clearAll()
+    self:clearThumbnails()
     self:openDB()
     
     -- Get all filenames to delete
@@ -533,7 +541,7 @@ function Storage:clearAll()
     
     -- Delete HTML files
     for _, filename in ipairs(filenames) do
-        local filepath = self.articles_dir .. "/" .. filename
+        local filepath = self.instapaper_dir .. "/" .. filename
         os.remove(filepath)
     end
     
@@ -560,6 +568,91 @@ function Storage:getLastSyncTime()
     end
     
     return nil
+end
+
+-- Save thumbnail image to file
+function Storage:saveThumbnailImageToFile(image_data, bookmark_id)
+    local RenderImage = require("ui/renderimage")
+    local DataStorage = require("datastorage")
+    local lfs = require("libs/libkoreader-lfs")
+    
+    local image_bb = RenderImage:renderImageData(image_data, #image_data)
+    if not image_bb then
+        logger.warn("ereader: Failed to render image")
+        return false
+    end
+    
+    -- Crop
+    local orig_w, orig_h = image_bb:getWidth(), image_bb:getHeight()
+    local crop_size = math.min(orig_w, orig_h)
+    local crop_x = math.floor((orig_w - crop_size) / 2)
+    local crop_y = math.floor((orig_h - crop_size) / 2)
+    
+    local cropped_bb = image_bb:viewport(crop_x, crop_y, crop_size, crop_size)
+    
+    -- Scale
+    local thumbnail_bb = RenderImage:scaleBlitBuffer(cropped_bb, 90, 90)
+    
+    -- Save
+    local thumbnail_filename = string.format("%s/%s_thumbnail.jpg", self.thumbnail_dir, bookmark_id)
+    local save_success, err = thumbnail_bb:writeToFile(thumbnail_filename, "jpg", 85)
+    
+    image_bb:free()
+    cropped_bb:free()
+    thumbnail_bb:free()
+        
+    if save_success then
+        logger.dbg("ereader: Saved thumbnail:", thumbnail_filename)
+        return true
+    else
+        logger.warn("ereader: Failed to save thumbnail:", thumbnail_filename, "Error:", err)
+        return false
+    end
+end
+
+-- Get article thumbnail file path
+function Storage:getArticleThumbnail(bookmark_id)
+    local DataStorage = require("datastorage")
+    local lfs = require("libs/libkoreader-lfs")
+    
+    -- Generate thumbnail filename
+    local thumbnail_filename = string.format("%s/%s_thumbnail.jpg", 
+    self.thumbnail_dir, bookmark_id)
+    
+    -- Check if thumbnail file exists
+    if lfs.attributes(thumbnail_filename, "mode") then
+        return thumbnail_filename
+    else
+        return nil
+    end
+end
+
+-- Clear all thumbnail files
+function Storage:clearThumbnails()
+    local DataStorage = require("datastorage")
+    local lfs = require("libs/libkoreader-lfs")
+        
+    -- Check if thumbnail directory exists
+    if not lfs.attributes(self.thumbnail_dir, "mode") then
+        logger.dbg("ereader: No thumbnail directory to clean up")
+        return
+    end
+    
+    -- Remove all thumbnail files
+    local count = 0
+    for file in lfs.dir(self.thumbnail_dir) do
+        if file ~= "." and file ~= ".." and file:match("_thumbnail%.jpg$") then
+            local filepath = self.thumbnail_dir .. "/" .. file
+            local success, err = os.remove(filepath)
+            if success then
+                count = count + 1
+            else
+                logger.warn("ereader: Failed to remove thumbnail file:", filepath, err)
+            end
+        end
+    end
+    
+    logger.dbg("ereader: Cleaned up", count, "thumbnail files")
 end
 
 function Storage:updateArticleStatus(bookmark_id, status_type, value)
