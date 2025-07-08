@@ -7,7 +7,7 @@ describe("Instapaper offline queueing", function()
     local InstapaperManager, InstapaperAPIManager, NetworkMgr, orig_isOnline
 
     setup(function()
-        package.path = "plugins/instapaper.koplugin/?.lua;" .. package.path
+        package.path = "plugins/ereader.koplugin/?.lua;" .. package.path
         InstapaperManager = require("InstapaperManager")
         InstapaperAPIManager = require("lib/instapaperapimanager")
         NetworkMgr = require("ui/network/manager")
@@ -120,7 +120,7 @@ describe("Instapaper offline queueing", function()
             reading_time = 1
         }
         before_each(function()
-            package.path = "plugins/instapaper.koplugin/?.lua;" .. package.path
+            package.path = "plugins/ereader.koplugin/?.lua;" .. package.path
             InstapaperManager = require("InstapaperManager"):instapaperManager()
             InstapaperAPIManager = require("lib/instapaperapimanager")
             NetworkMgr = require("ui/network/manager")

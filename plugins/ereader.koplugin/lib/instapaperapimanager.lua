@@ -82,7 +82,7 @@ end
 
 -- Queue management functions
 function InstapaperAPIManager:getQueueSettings()
-    return LuaSettings:open(DataStorage:getSettingsDir().."/instapaper/queue.lua")
+    return LuaSettings:open(DataStorage:getSettingsDir().."/instapaper_queue.lua")
 end
 
 function InstapaperAPIManager:saveQueue(queue)
@@ -99,7 +99,7 @@ end
 
 -- Token management methods
 function InstapaperAPIManager:loadTokens()
-    return getSetting("instapaper_oauth_token"), getSetting("oauth_token_secret")
+    return getSetting("instapaper_oauth_token"), getSetting("instapaper_oauth_token_secret")
 end
 
 function InstapaperAPIManager:loadUsername()
