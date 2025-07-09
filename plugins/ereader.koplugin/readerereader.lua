@@ -29,6 +29,7 @@ local ReaderEreader = InputContainer:extend{
     current_article = nil,
     toolbar_visible = false,
     toolbar_widget = nil,
+    unfindable_highlights = {}, -- Track highlights that can't be found in the document
 }
 
 function ReaderEreader:init()
@@ -451,6 +452,9 @@ function ReaderEreader:reloadHighlights()
         return
     end
     
+    -- Clear the unfindable highlights tracking for this reload
+    self.unfindable_highlights = {}
+    
     -- Remove existing Instapaper highlights before adding new ones
     if self.ui and self.ui.annotation and self.ui.annotation.annotations then
         logger.dbg("ereader: Remove existing highlights")
@@ -509,6 +513,11 @@ function ReaderEreader:reloadHighlights()
             end
         else
             logger.warn("ereader: Could not find occurrence #" .. tostring(pos) .. " of text '" .. tostring(ereader_highlight.text) .. "' in document for highlight.")
+            -- Track this highlight as unfindable so we don't delete it during sync
+            if ereader_highlight.id then
+                self.unfindable_highlights[tostring(ereader_highlight.id)] = true
+                logger.dbg("ereader: Added highlight ID " .. tostring(ereader_highlight.id) .. " to unfindable set")
+            end
         end
     end
     logger.dbg("ereader: Loaded", #highlights, "highlights for bookmark_id:", self.current_article.bookmark_id)
@@ -612,10 +621,15 @@ function ReaderEreader:syncAnnotationsWithEreaderHighlights()
     
     -- Any highlights remaining in ereader_highlights_by_id no longer have corresponding annotations, which means the user deleted them.
     for _, local_hl in pairs(ereader_highlights_by_id) do
-        logger.dbg("ereader: Deleting local highlight not present in UI:", local_hl.text)
-        pcall(function()
-            self.instapaperManager:deleteHighlight(local_hl)
-        end)
+        -- Skip highlights that we know can't be found in the document
+        if self.unfindable_highlights[tostring(local_hl.id)] then
+            logger.dbg("ereader: Skipping deletion of unfindable highlight:", local_hl.text)
+        else
+            logger.dbg("ereader: Deleting local highlight not present in UI:", local_hl.text)
+            pcall(function()
+                self.instapaperManager:deleteHighlight(local_hl)
+            end)
+        end
     end
 end
 
