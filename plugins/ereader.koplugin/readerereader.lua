@@ -10,6 +10,7 @@ local TextWidget = require("ui/widget/textwidget")
 local GestureRange = require("ui/gesturerange")
 local Geom = require("ui/geometry")
 local Device = require("device")
+local Event = require("ui/event")
 local Screen = Device.screen
 local logger = require("logger")
 local Blitbuffer = require("ffi/blitbuffer")
@@ -34,7 +35,6 @@ function ReaderEreader:init()
     self.instapaperManager = InstapaperManager:instapaperManager()
 
     if self.ui and self.ui.document and self.ui.document.file then
-
         local file_path = self.ui.document.file
         if string.find(file_path, "/ereader/") or string.find(file_path, "ereader") then
             self.is_ereader_document = true
@@ -49,6 +49,7 @@ function ReaderEreader:init()
             
             -- Register touch zones for showing/hiding toolbar
             self:setupTouchZones()
+            self:reloadHighlights()
             
             -- Safely register to main menu - check if ReaderEreader is ready
             if self.ui.postInitCallback then
@@ -444,7 +445,7 @@ function ReaderEreader:onUnfavoriteArticle()
     end)
 end
 
-function ReaderEreader:loadHighlights()
+function ReaderEreader:reloadHighlights()
     if not self.current_article or not self.current_article.bookmark_id then
         logger.warn("ereader: No current article or bookmark_id for loading highlights")
         return
@@ -455,7 +456,9 @@ function ReaderEreader:loadHighlights()
         logger.dbg("ereader: Remove existing highlights")
         for i = #self.ui.annotation.annotations, 1, -1 do
             if self.ui.annotation.annotations[i].is_from_ereader then
+                local annotation = self.ui.annotation.annotations[i]
                 table.remove(self.ui.annotation.annotations, i)
+                self.ui:handleEvent(Event:new("AnnotationsModified",{annotation}))
             end
         end
     end
@@ -502,6 +505,7 @@ function ReaderEreader:loadHighlights()
             }
             if self.ui.annotation and self.ui.annotation.addItem then
                 self.ui.annotation:addItem(annotation)
+                self.ui:handleEvent(Event:new("AnnotationsModified",{annotation}))
             end
         else
             logger.warn("ereader: Could not find occurrence #" .. tostring(pos) .. " of text '" .. tostring(ereader_highlight.text) .. "' in document for highlight.")

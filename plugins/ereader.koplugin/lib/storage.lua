@@ -903,6 +903,31 @@ function Storage:getAllHighlights()
     return highlights
 end
 
+function Storage:getPendingHighlights()
+    self:openDB()
+    local stmt = self.db_conn:prepare([[SELECT * FROM highlights WHERE sync_status = 'pending' OR sync_status = 'pending_delete' ORDER BY bookmark_id ASC, position ASC]])
+    local highlights = {}
+    local row = stmt:reset():step()
+    while row do
+        local highlight = {
+            id = row[1],
+            bookmark_id = row[2],
+            highlight_id = row[3],
+            text = row[4],
+            note = row[5],
+            position = row[6],
+            time_created = row[7],
+            time_updated = row[8],
+            sync_status = row[9]
+        }
+        table.insert(highlights, highlight)
+        row = stmt:step()
+    end
+    self:closeDB()
+    logger.dbg("ereader: Retrieved", #highlights, "pending highlights from database")
+    return highlights
+end
+
 function Storage:savePendingHighlight(highlight)
     self:openDB()
     local insert_stmt = self.db_conn:prepare([[ 
@@ -952,6 +977,36 @@ function Storage:markHighlightPendingDelete(id)
         return false, err
     end
     logger.dbg("ereader: Marked highlight as pending_delete:", id)
+    return true
+end
+
+function Storage:markHighlightSynced(id, highlight_id)
+    self:openDB()
+    local stmt = self.db_conn:prepare([[UPDATE highlights SET highlight_id = ?, sync_status = 'synced' WHERE id = ?]])
+    local ok, err = pcall(function()
+        stmt:reset():bind(highlight_id, id):step()
+    end)
+    self:closeDB()
+    if not ok then
+        logger.err("ereader: Failed to mark highlight as synced:", err)
+        return false, err
+    end
+    logger.dbg("ereader: Marked highlight as synced:", id, highlight_id)
+    return true
+end
+
+function Storage:deleteHighlightById(id)
+    self:openDB()
+    local stmt = self.db_conn:prepare([[DELETE FROM highlights WHERE id = ?]])
+    local ok, err = pcall(function()
+        stmt:reset():bind(id):step()
+    end)
+    self:closeDB()
+    if not ok then
+        logger.err("ereader: Failed to delete highlight by id:", err)
+        return false, err
+    end
+    logger.dbg("ereader: Deleted highlight by id:", id)
     return true
 end
 

@@ -75,9 +75,9 @@ function InstapaperManager:authenticate(username, password)
     end
 end
 
-function InstapaperManager:syncReads()
+function InstapaperManager:synchWithAPI()
     if not self:isAuthenticated() then
-        logger.err("ereader: Cannot sync reads - not authenticated")
+        logger.err("ereader: Cannot sync - not authenticated")
         return false
     end
     
@@ -89,6 +89,31 @@ function InstapaperManager:syncReads()
         logger.warn("ereader: Some queued requests failed:", #queue_errors, "errors")
         for _, error_info in ipairs(queue_errors) do
             logger.warn("ereader: Queued request failed:", error_info.error)
+        end
+    end
+
+    -- Now process any unsynced annotations
+    -- Sync pending and pending_delete highlights with Instapaper API
+    local pending_highlights = self.storage:getPendingHighlights()
+    for _, highlight in ipairs(pending_highlights) do
+        if highlight.sync_status == 'pending' then
+            -- Add highlight to Instapaper
+            local ok, highlight_id, err = self.instapaper_api_manager:addHighlight(highlight.bookmark_id, highlight.text, highlight.position)
+            if ok and highlight_id then
+                self.storage:markHighlightSynced(highlight.id, highlight_id)
+                logger.dbg("ereader: Synced highlight to Instapaper:", highlight.text)
+            else
+                logger.warn("ereader: Failed to sync highlight to Instapaper:", highlight.text, err)
+            end
+        elseif highlight.sync_status == 'pending_delete' and highlight.highlight_id then
+            -- Delete highlight from Instapaper
+            local ok, err = self.instapaper_api_manager:deleteHighlight(highlight.highlight_id)
+            if ok then
+                self.storage:deleteHighlightById(highlight.id)
+                logger.dbg("ereader: Deleted highlight from Instapaper and local DB:", highlight.text)
+            else
+                logger.warn("ereader: Failed to delete highlight from Instapaper:", highlight.text, err)
+            end
         end
     end
     

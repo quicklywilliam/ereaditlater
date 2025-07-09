@@ -581,6 +581,58 @@ function InstapaperAPIManager:unfavoriteArticle(bookmark_id)
     return self:executeQueueableRequest("/api/1/bookmarks/unstar", {bookmark_id = string.format("%d", bookmark_id)})
 end
 
+-- Add a highlight to Instapaper
+function InstapaperAPIManager:addHighlight(bookmark_id, text, position)
+    if not self:isAuthenticated() then
+        return false, nil, "Not authenticated"
+    end
+    if not bookmark_id or not text or text == "" then
+        return false, nil, "Missing bookmark_id or text for highlight"
+    end
+    local params = self:generateOAuthParams({
+        oauth_token = self.oauth_token,
+        text = text,
+        position = position or 0
+    })
+    local url = self.api_base .. string.format("/api/1.1/bookmarks/%d/highlight", bookmark_id)
+    local request = self:buildOAuthRequest("POST", url, params, self.oauth_token_secret)
+    local success, body, error_message = self:executeRequest(request)
+    if success then
+        local ok, output = pcall(JSONUtils.decode, body)
+        if ok and output and type(output) == "table" then
+            for _, item in ipairs(output) do
+                if item.type == "highlight" and item.highlight_id then
+                    return true, item.highlight_id, nil
+                end
+            end
+        end
+        return false, nil, "Failed to parse addHighlight response"
+    else
+        return false, nil, error_message
+    end
+end
+
+-- Delete a highlight from Instapaper
+function InstapaperAPIManager:deleteHighlight(highlight_id)
+    if not self:isAuthenticated() then
+        return false, "Not authenticated"
+    end
+    if not highlight_id then
+        return false, "Missing highlight_id"
+    end
+    local params = self:generateOAuthParams({
+        oauth_token = self.oauth_token
+    })
+    local url = self.api_base .. string.format("/api/1.1/highlights/%d/delete", highlight_id)
+    local request = self:buildOAuthRequest("POST", url, params, self.oauth_token_secret)
+    local success, _, error_message = self:executeRequest(request)
+    if success then
+        return true, nil
+    else
+        return false, error_message
+    end
+end
+
 -- Queue management methods
 function InstapaperAPIManager:addToQueue(url, params)
     local queued_request = {

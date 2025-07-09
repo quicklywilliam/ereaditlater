@@ -207,7 +207,7 @@ function Ereader:showLoginDialog()
                                 UIManager:show(info)
 
                                 UIManager:scheduleIn(0.1, function()
-                                    self.instapaperManager:syncReads()
+                                    self.instapaperManager:synchWithAPI()
                                     self:showArticles()
                                     UIManager:close(info)
                                 end)
@@ -535,11 +535,10 @@ function Ereader:showMenu()
                 callback = function()
                     -- Use runWhenOnline to handle Wi-Fi reconnection non-blockingly
                     NetworkMgr:runWhenOnline(function()
-                        local info = InfoMessage:new{ text = _("Syncing articles...") }
+                        local info = InfoMessage:new{ text = _("Syncing...") }
                         UIManager:show(info)
                         
-                        -- Perform sync
-                        local success, error_message = self.instapaperManager:syncReads()
+                        local success, error_message = self.instapaperManager:synchWithAPI()
                         
                         UIManager:close(info)
                         
@@ -596,25 +595,27 @@ function Ereader:loadArticleContent(article)
     if filepath then
         self:showReaderForArticle(article, filepath)
     else
-        local info = InfoMessage:new{ text = _("Downloading article...") }
-        UIManager:show(info)
-        
-        UIManager:scheduleIn(0.1, function()
-            -- Download and get article content
-            local success, newfilepath, error_message = self.instapaperManager:downloadArticle(article.bookmark_id)
-            UIManager:close(info)
-            if not success then
-                UIManager:show(ConfirmBox:new{
-                    text = _("Failed to load article: ") .. (error_message or _("Unknown error")),
-                    ok_text = _("OK"),
-                })
-                return
-            end
+        NetworkMgr:runWhenOnline(function()
+            local info = InfoMessage:new{ text = _("Downloading article...") }
+            UIManager:show(info)
             
-            self:showReaderForArticle(article, newfilepath)
+            UIManager:scheduleIn(0.1, function()
+                -- Download and get article content
+                local success, newfilepath, error_message = self.instapaperManager:downloadArticle(article.bookmark_id)
+                UIManager:close(info)
+                if not success then
+                    UIManager:show(ConfirmBox:new{
+                        text = _("Failed to load article: ") .. (error_message or _("Unknown error")),
+                        ok_text = _("OK"),
+                    })
+                    return
+                end
+                
+                self:showReaderForArticle(article, newfilepath)
 
-            -- update the article list to show the downloaded article
-            self:showArticles()
+                -- update the article list to show the downloaded article
+                self:showArticles()
+            end)
         end)
     end
 end
@@ -654,7 +655,7 @@ function Ereader:showReaderForArticle(article, filepath)
                     logger.dbg("ereader: get highlights failed:", result)
                 end
                 -- loadHighlights, will fall back on local cache if getArticleHighlights fails
-                module_instance:loadHighlights()
+                module_instance:reloadHighlights()
             end)
         end
     end)
