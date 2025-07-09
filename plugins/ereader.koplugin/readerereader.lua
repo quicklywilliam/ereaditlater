@@ -459,12 +459,17 @@ function ReaderEreader:loadHighlights()
         return
     end
     
-    -- Check if highlights are already loaded to prevent duplicates
-    if self.highlights_loaded then
-        logger.dbg("ereader: Highlights already loaded for bookmark_id:", self.current_article.bookmark_id)
-        return
+    -- Remove existing Instapaper highlights before adding new ones
+    if self.ui and self.ui.annotation and self.ui.annotation.annotations then
+        logger.dbg("ereader: Remove existing highlights")
+        for i = #self.ui.annotation.annotations, 1, -1 do
+            if self.ui.annotation.annotations[i].instapaper then
+                table.remove(self.ui.annotation.annotations, i)
+            end
+        end
     end
     
+
     local highlights = self.instapaperManager:getStoredArticleHighlights(self.current_article.bookmark_id)
     if not highlights or #highlights == 0 then
         logger.dbg("ereader: No stored highlights to load for bookmark_id:", self.current_article.bookmark_id)
@@ -500,7 +505,6 @@ function ReaderEreader:loadHighlights()
                 datetime = os.date("%Y-%m-%d %H:%M:%S")
             end
             
-            -- Get page number from XPointer
             local page_number = self.ui.document:getPageFromXPointer(start_xp)
             
             local highlight = {
@@ -513,7 +517,8 @@ function ReaderEreader:loadHighlights()
                 chapter = chapter,
                 datetime = datetime,
                 note = api_highlight.note,
-                color = "yellow"  -- Instapaper only supports one color
+                color = "yellow",  -- Instapaper only supports one color
+                instapaper = true,  -- Mark as Instapaper highlight
             }
             -- 6. Add to annotations
             if self.ui.annotation and self.ui.annotation.addItem then
@@ -524,8 +529,6 @@ function ReaderEreader:loadHighlights()
         end
     end
     
-    -- Mark highlights as loaded
-    self.highlights_loaded = true
     logger.dbg("ereader: Loaded", #highlights, "highlights for bookmark_id:", self.current_article.bookmark_id)
     
     -- Force a redraw to show the highlights immediately
