@@ -582,19 +582,21 @@ function InstapaperAPIManager:unfavoriteArticle(bookmark_id)
 end
 
 -- Add a highlight to Instapaper
-function InstapaperAPIManager:addHighlight(bookmark_id, text, position)
+function InstapaperAPIManager:addHighlight(highlight)
     if not self:isAuthenticated() then
         return false, nil, "Not authenticated"
     end
-    if not bookmark_id or not text or text == "" then
+    if not highlight.bookmark_id or not highlight.text or highlight.text == "" then
         return false, nil, "Missing bookmark_id or text for highlight"
     end
     local params = self:generateOAuthParams({
         oauth_token = self.oauth_token,
-        text = text,
-        position = position or 0
+        text = highlight.text,
+        position = highlight.position or 0,
+        timestamp = highlight.timestamp or os.time(),
+        note = highlight.note
     })
-    local url = self.api_base .. string.format("/api/1.1/bookmarks/%d/highlight", bookmark_id)
+    local url = self.api_base .. string.format("/api/1.1/bookmarks/%d/highlight", highlight.bookmark_id)
     local request = self:buildOAuthRequest("POST", url, params, self.oauth_token_secret)
     local success, body, error_message = self:executeRequest(request)
     if success then

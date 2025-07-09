@@ -98,7 +98,7 @@ function InstapaperManager:synchWithAPI()
     for _, highlight in ipairs(pending_highlights) do
         if highlight.sync_status == 'pending' then
             -- Add highlight to Instapaper
-            local ok, highlight_id, err = self.instapaper_api_manager:addHighlight(highlight.bookmark_id, highlight.text, highlight.position)
+            local ok, highlight_id, err = self.instapaper_api_manager:addHighlight(highlight)
             if ok and highlight_id then
                 self.storage:markHighlightSynced(highlight.id, highlight_id)
                 logger.dbg("ereader: Synced highlight to Instapaper:", highlight.text)
