@@ -532,6 +532,29 @@ function InstapaperAPIManager:getArticleText(bookmark_id)
     end
 end
 
+function InstapaperAPIManager:getHighlights(bookmark_id)
+    if not self:isAuthenticated() then
+        return false, {}, "Not authenticated"
+    end
+    
+    -- Generate OAuth parameters including bookmark_id for signature
+    local params = self:generateOAuthParams({
+        oauth_token = self.oauth_token,
+        bookmark_id = tostring(bookmark_id)
+    })
+    
+    -- Build and execute request (POST with all params in signature)
+    -- According to API docs: /api/1.1/bookmarks/<bookmark-id>/highlights
+    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1.1/bookmarks/" .. tostring(bookmark_id) .. "/highlights", params, self.oauth_token_secret)
+    local success, body, error_message = self:executeRequest(request)
+    
+    if success then
+        return true, body, nil
+    else
+        return false, {}, error_message
+    end
+end
+
 function InstapaperAPIManager:addArticle(url)
     return self:executeQueueableRequest("/api/1/bookmarks/add", {url = url})
 end
