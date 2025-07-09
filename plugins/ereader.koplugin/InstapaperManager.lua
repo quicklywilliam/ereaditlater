@@ -481,4 +481,18 @@ function InstapaperManager:getStoredArticleHighlights(bookmark_id)
     return self.storage:getHighlights(bookmark_id)
 end
 
+function InstapaperManager:savePendingHighlight(highlight)
+    return self.storage:savePendingHighlight(highlight)
+end
+
+function InstapaperManager:deleteHighlight(highlight)
+    if highlight.sync_status == 'pending' then
+        -- Just delete from storage
+        return self.storage:deleteHighlight(highlight.id)
+    else
+        -- Mark as pending_delete for future sync with Instapaper API
+        return self.storage:markHighlightPendingDelete(highlight.id)
+    end
+end
+
 return InstapaperManager

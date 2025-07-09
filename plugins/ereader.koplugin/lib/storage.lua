@@ -43,13 +43,13 @@ local INSTAPAPER_DB_SCHEMA = [[
     CREATE TABLE IF NOT EXISTS highlights (
         id                  INTEGER PRIMARY KEY,
         bookmark_id         INTEGER NOT NULL,        -- Instapaper's bookmark ID
-        highlight_id        INTEGER NOT NULL,        -- Instapaper's highlight ID
+        highlight_id        INTEGER,                 -- Instapaper's highlight ID (Can be NULL for pending uploads)
         text                TEXT NOT NULL,           -- Highlighted text
         note                TEXT,                    -- User's note (can be NULL)
         position            INTEGER DEFAULT 0,       -- Text position in the article
         time_created        INTEGER NOT NULL,        -- Unix timestamp when created
         time_updated        INTEGER NOT NULL,        -- Unix timestamp when last updated
-        sync_status         TEXT DEFAULT 'synced',   -- 'synced', 'pending', 'error'
+        sync_status         TEXT DEFAULT 'synced',   -- 'synced', 'pending', 'pending_delete', 'error'
         UNIQUE(bookmark_id, highlight_id)
     );
     
@@ -751,9 +751,9 @@ function Storage:storeHighlights(bookmark_id, highlights)
     
     self:openDB()
     
-    -- First, delete existing highlights for this article
-    local delete_stmt = self.db_conn:prepare([[
-        DELETE FROM highlights WHERE bookmark_id = ?
+    -- First, delete existing synced highlights for this article. We re-add them below since some of them may have since been removed
+    local delete_stmt = self.db_conn:prepare([[ 
+        DELETE FROM highlights WHERE bookmark_id = ? AND (sync_status = 'synced')
     ]])
     
     local ok, err = pcall(function()
@@ -762,11 +762,22 @@ function Storage:storeHighlights(bookmark_id, highlights)
     
     if not ok then
         logger.err("ereader: Failed to delete existing highlights:", err)
-        self:closeDB()
         return false, "Failed to delete existing highlights: " .. tostring(err)
     end
     
-    -- Insert new highlights
+    -- Query for all highlights for this bookmark_id with sync_status = 'pending_delete'
+    local pending_delete_ids = {}
+    local pending_delete_stmt = self.db_conn:prepare([[SELECT highlight_id FROM highlights WHERE bookmark_id = ? AND sync_status = 'pending_delete']])
+    local row = pending_delete_stmt:reset():bind(bookmark_id):step()
+    while row do
+        logger.dbg("ereader: Found pending delete:", tonumber(row[1]))
+        if row[1] then
+            pending_delete_ids[tonumber(row[1])] = true
+        end
+        row = pending_delete_stmt:step()
+    end
+    
+    -- Insert new highlights, skipping those marked pending_delete
     local insert_stmt = self.db_conn:prepare([[
         INSERT INTO highlights (
             bookmark_id, highlight_id, text, note, position, 
@@ -778,13 +789,16 @@ function Storage:storeHighlights(bookmark_id, highlights)
     local inserted_count = 0
     
     for _, highlight in ipairs(highlights) do
-        -- Ensure all values have the correct types for SQLite
         local highlight_id = tonumber(highlight.highlight_id) or 0
+        -- Skip highlights marked pending_delete
+        if highlight_id ~= 0 and pending_delete_ids[highlight_id] then
+            logger.dbg("ereader: Skipping restore of highlight marked pending_delete:", highlight_id)
+            goto continue
+        end
         local text = tostring(highlight.text or "")
         local note = highlight.note
         local position = tonumber(highlight.position) or 0
         local time_created = tonumber(highlight.time) or current_time
-        
         local ok, err = pcall(function()
             insert_stmt:reset():bind(
                 bookmark_id,
@@ -797,14 +811,13 @@ function Storage:storeHighlights(bookmark_id, highlights)
                 "synced"
             ):step()
         end)
-        
         if not ok then
             logger.err("ereader: Failed to insert highlight:", err)
             self:closeDB()
             return false, "Failed to insert highlight: " .. tostring(err)
         end
-        
         inserted_count = inserted_count + 1
+        ::continue::
     end
     
     self:closeDB()
@@ -815,11 +828,7 @@ end
 -- Get highlights for an article
 function Storage:getHighlights(bookmark_id)
     self:openDB()
-    
-    local stmt = self.db_conn:prepare([[
-        SELECT * FROM highlights WHERE bookmark_id = ? ORDER BY position ASC
-    ]])
-    
+    local stmt = self.db_conn:prepare([[SELECT * FROM highlights WHERE bookmark_id = ? AND (sync_status IS NULL OR sync_status != 'pending_delete') ORDER BY position ASC]])
     local highlights = {}
     local row = stmt:reset():bind(bookmark_id):step()
     while row do
@@ -837,7 +846,6 @@ function Storage:getHighlights(bookmark_id)
         table.insert(highlights, highlight)
         row = stmt:step()
     end
-    
     self:closeDB()
     logger.dbg("ereader: Retrieved", #highlights, "highlights for bookmark_id:", bookmark_id)
     return highlights
@@ -895,6 +903,58 @@ function Storage:getAllHighlights()
     self:closeDB()
     logger.dbg("ereader: Retrieved", #highlights, "highlights from database")
     return highlights
+end
+
+function Storage:savePendingHighlight(highlight)
+    self:openDB()
+    local insert_stmt = self.db_conn:prepare([[ 
+        INSERT INTO highlights (
+            bookmark_id, highlight_id, text, note, position, 
+            time_created, time_updated, sync_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ]])
+    local current_time = os.time()
+    local bookmark_id = tonumber(highlight.bookmark_id) or 0
+    local text = tostring(highlight.text or "")
+    local note = highlight.note
+    local position = tonumber(highlight.position) or 0
+    local time_created = tonumber(highlight.time_created) or current_time
+    local time_updated = tonumber(highlight.time_updated) or current_time
+    local sync_status = "pending"
+    local ok, err = pcall(function()
+        insert_stmt:reset():bind(
+            bookmark_id,
+            nil,  -- highlight_id is NULL for pending highlights
+            text,
+            note,
+            position,
+            time_created,
+            time_updated,
+            sync_status
+        ):step()
+    end)
+    self:closeDB()
+    if not ok then
+        logger.err("ereader: Failed to insert pending highlight:", err)
+        return false, err
+    end
+    logger.dbg("ereader: Saved pending highlight for bookmark_id:", bookmark_id, "text:", text)
+    return true
+end
+
+function Storage:markHighlightPendingDelete(id)
+    self:openDB()
+    local stmt = self.db_conn:prepare([[UPDATE highlights SET sync_status = 'pending_delete' WHERE id = ?]])
+    local ok, err = pcall(function()
+        stmt:reset():bind(id):step()
+    end)
+    self:closeDB()
+    if not ok then
+        logger.err("ereader: Failed to mark highlight as pending_delete:", err)
+        return false, err
+    end
+    logger.dbg("ereader: Marked highlight as pending_delete:", id)
+    return true
 end
 
 return Storage 

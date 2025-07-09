@@ -320,17 +320,10 @@ end
 
 function ReaderEreader:onBackToArticles()
     logger.dbg("ereader: Back to articles")
-    self:hideToolbar()
-    
+
     -- Close current reader and return to ereader plugin
+    self:onClose()
     self.ui:onClose()
-    
-    -- Refresh the ereader list view if callback is provided
-    if self.refresh_callback then
-        UIManager:scheduleIn(0.2, function()
-            self.refresh_callback()
-        end)
-    end
 end
 
 function ReaderEreader:onArchiveArticle()
@@ -463,77 +456,164 @@ function ReaderEreader:loadHighlights()
     if self.ui and self.ui.annotation and self.ui.annotation.annotations then
         logger.dbg("ereader: Remove existing highlights")
         for i = #self.ui.annotation.annotations, 1, -1 do
-            if self.ui.annotation.annotations[i].instapaper then
+            if self.ui.annotation.annotations[i].is_from_ereader then
                 table.remove(self.ui.annotation.annotations, i)
             end
         end
     end
     
-
     local highlights = self.instapaperManager:getStoredArticleHighlights(self.current_article.bookmark_id)
     if not highlights or #highlights == 0 then
         logger.dbg("ereader: No stored highlights to load for bookmark_id:", self.current_article.bookmark_id)
         return
     end
-    for _, api_highlight in ipairs(highlights) do
-        -- 1. Find all occurrences of the text in the document
-        local search_results = self.ui.document:findAllText(api_highlight.text, false, 0, 100, false)
-        -- 2. Use the position parameter to select the correct occurrence (0-based index from API)
-        local pos = tonumber(api_highlight.position)
+    for _, ereader_highlight in ipairs(highlights) do
+        local search_results = self.ui.document:findAllText(ereader_highlight.text, false, 0, 100, false)
+        local pos = tonumber(ereader_highlight.position)
         if search_results and pos and pos >= 0 and search_results[pos + 1] then
             local result = search_results[pos + 1]
-            -- 3. Get the XPointer for the start position (already in result.start)
             local start_xp = result.start
-            -- 4. Get the XPointer for the end position (already in result["end"])
             local end_xp = result["end"]
-            
-            -- 5. Create the highlight annotation
             local chapter = nil
             if self.ui.toc then
-                -- Get page number from XPointer
                 local page = self.ui.document:getPageFromXPointer(start_xp)
                 if page then
                     chapter = self.ui.toc:getTocTitleByPage(page)
                 end
             end
-            
-            -- Convert timestamp to proper format
-            local datetime = api_highlight.timestamp
+            local datetime = ereader_highlight.timestamp
             if datetime and type(datetime) == "number" then
                 datetime = os.date("%Y-%m-%d %H:%M:%S", datetime)
             elseif not datetime then
                 datetime = os.date("%Y-%m-%d %H:%M:%S")
             end
-            
             local page_number = self.ui.document:getPageFromXPointer(start_xp)
-            
-            local highlight = {
+            local annotation = {
                 drawer = "lighten",
-                page = start_xp,  -- XPointer for rolling documents
-                pos0 = start_xp,  -- XPointer for start position
-                pos1 = end_xp,    -- XPointer for end position
-                pageno = page_number,  -- Actual page number
-                text = api_highlight.text,  -- The highlighted text content
+                page = start_xp,
+                pos0 = start_xp,
+                pos1 = end_xp,
+                pageno = page_number,
+                text = ereader_highlight.text,
                 chapter = chapter,
                 datetime = datetime,
-                note = api_highlight.note,
-                color = "yellow",  -- Instapaper only supports one color
-                instapaper = true,  -- Mark as Instapaper highlight
+                note = ereader_highlight.note,
+                color = "yellow",
+                is_from_ereader = true,
+                ereader_highlight_id = ereader_highlight.id, -- keep track of ereader's id so we can match it later
             }
-            -- 6. Add to annotations
             if self.ui.annotation and self.ui.annotation.addItem then
-                self.ui.annotation:addItem(highlight)
+                self.ui.annotation:addItem(annotation)
             end
         else
-            logger.warn("ereader: Could not find occurrence #" .. tostring(pos) .. " of text '" .. tostring(api_highlight.text) .. "' in document for highlight.")
+            logger.warn("ereader: Could not find occurrence #" .. tostring(pos) .. " of text '" .. tostring(ereader_highlight.text) .. "' in document for highlight.")
+        end
+    end
+    logger.dbg("ereader: Loaded", #highlights, "highlights for bookmark_id:", self.current_article.bookmark_id)
+    if self.ui and self.ui.view then
+        UIManager:setDirty(self.ui.view.dialog, "ui")
+    end
+end
+
+function ReaderEreader:convertAnnotationToPendingHighlight(annotation)
+    local bookmark_id = self.current_article and tonumber(self.current_article.bookmark_id)
+    if not bookmark_id then
+        logger.warn("ereader: No valid bookmark_id for annotation, skipping save.")
+        return nil
+    end
+
+    -- Find the incident index (position) of this highlight in the document
+    local text = annotation.text
+    local pos0 = annotation.pos0 or annotation.page
+    local position = nil
+    if text and pos0 and self.ui and self.ui.document then
+        local search_results = self.ui.document:findAllText(text, false, 0, 100, false)
+        for idx, result in ipairs(search_results or {}) do
+            if result.start == pos0 then
+                position = idx - 1  -- Instapaper uses 0-based index
+                break
+            end
+        end
+    end
+    -- Fallback if not found
+    if not position then position = 0 end
+
+    -- Convert datetime string to timestamp if needed
+    local time_created = annotation.datetime
+    if type(time_created) == "string" then
+        local y, m, d, H, M, S = string.match(time_created, "(\\d+)%-(\\d+)%-(\\d+) (\\d+):(\\d+):(\\d+)")
+        if y and m and d and H and M and S then
+            time_created = os.time{year=tonumber(y), month=tonumber(m), day=tonumber(d), hour=tonumber(H), min=tonumber(M), sec=tonumber(S)}
+        else
+            time_created = os.time()
+        end
+    elseif type(time_created) ~= "number" then
+        time_created = os.time()
+    end
+
+    return {
+        bookmark_id = bookmark_id,
+        text = annotation.text,
+        note = annotation.note,
+        position = position,
+        time_created = time_created,
+        time_updated = os.time(),
+        sync_status = "pending",
+    }
+end
+
+-- Update saveHighlights to use the conversion
+function ReaderEreader:syncAnnotationsWithEreaderHighlights()
+    if not (self.ui and self.ui.annotation and self.ui.annotation.annotations) then
+        return
+    end
+    logger.dbg("ereader: syncAnnotationsWithEreaderHighlights")
+    local annotations = self.ui.annotation.annotations
+    local bookmark_id = self.current_article and tonumber(self.current_article.bookmark_id)
+    if not bookmark_id then
+        logger.warn("ereader: No valid bookmark_id for annotation sync, aborting.")
+        return
+    end
+    -- Fetch all ereader highlights for this article
+    local ereader_highlights = self.instapaperManager:getStoredArticleHighlights(bookmark_id)
+    -- Build a map from ereader_highlight_id to highlight object
+    local ereader_highlights_by_id = {}
+    for _, local_hl in ipairs(ereader_highlights) do
+        if local_hl.id then
+            ereader_highlights_by_id[tostring(local_hl.id)] = local_hl
+        end
+    end
+    for i = #annotations, 1, -1 do
+        local ann = annotations[i]
+        if ann.drawer == "highlight" or ann.drawer == "lighten" then
+            if ann.ereader_highlight_id then
+                ereader_highlights_by_id[tostring(ann.ereader_highlight_id)] = nil
+            else
+                -- If no ereader_highlight_id is set, it needs to be saved as a pending highlight
+                if not ann.is_from_ereader then
+                    logger.dbg("ereader: Found unsynced highlight, saving as pending", ann.text)
+                    local pending = self:convertAnnotationToPendingHighlight(ann)
+                    if pending then
+                        local ok, err = pcall(function()
+                            self.instapaperManager:savePendingHighlight(pending)
+                        end)
+                        if not ok then
+                            logger.warn("ereader: Failed to save pending highlight:", err)
+                        end
+                    end
+                else
+                    logger.warn("ereader: Annotation marked as from ereader but missing ereader_highlight_id…", ann.text)
+                end
+            end
         end
     end
     
-    logger.dbg("ereader: Loaded", #highlights, "highlights for bookmark_id:", self.current_article.bookmark_id)
-    
-    -- Force a redraw to show the highlights immediately
-    if self.ui and self.ui.view then
-        UIManager:setDirty(self.ui.view.dialog, "ui")
+    -- Any highlights remaining in ereader_highlights_by_id no longer have corresponding annotations, which means the user deleted them.
+    for _, local_hl in pairs(ereader_highlights_by_id) do
+        logger.dbg("ereader: Deleting local highlight not present in UI:", local_hl.text)
+        pcall(function()
+            self.instapaperManager:deleteHighlight(local_hl)
+        end)
     end
 end
 
@@ -580,9 +660,11 @@ function ReaderStatus:onEndOfBook(...)
 end
 
 
+-- Call syncHighlightsWithEreaderStorage from onClose
 function ReaderEreader:onClose()
+    logger.dbg("ereader: onClose")
+    self:syncAnnotationsWithEreaderHighlights()
     self:hideToolbar()
-    
     -- Refresh the Ereader list view if callback is provided
     if self.refresh_callback then
         UIManager:scheduleIn(0.2, function()
@@ -591,4 +673,4 @@ function ReaderEreader:onClose()
     end
 end
 
-return ReaderEreader 
+return ReaderEreader
