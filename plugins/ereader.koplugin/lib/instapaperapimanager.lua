@@ -8,6 +8,7 @@ local ltn12 = require("ltn12")
 local socket = require("socket")
 local socketutil = require("socketutil")
 local JSON = require("json")
+local JSONUtils = require("lib/json_utils")
 local DataStorage = require("datastorage")
 local LuaSettings = require("luasettings")
 
@@ -372,7 +373,7 @@ function InstapaperAPIManager:executeRequest(request)
 
         logger.err("ereader: Request failed with code:", code, "response:", body)
         if body then
-            local decodesuccess, output = pcall(JSON.decode, body)
+            local decodesuccess, output = pcall(JSONUtils.decode, body)
 
             if decodesuccess and output ~= nil then
                 for _, item in ipairs(output) do
@@ -442,7 +443,7 @@ function InstapaperAPIManager:getArticles(limit, have)
     if not self:isAuthenticated() then
         return false, {}, "Not authenticated"
     end
-    
+
     -- Generate OAuth parameters with API-specific additions
     local params = self:generateOAuthParams({
         oauth_token = self.oauth_token,
@@ -465,11 +466,11 @@ function InstapaperAPIManager:getArticles(limit, have)
     local success, body, error_message = self:executeRequest(request)
     
     if success then
-        local success, output = pcall(JSON.decode, body)
-        
+        local success, output = pcall(JSONUtils.decode, body)
         
         if success and output then
             local articles = {}
+            local highlights = {}
             local deleted_ids = {}
             for _, item in ipairs(output) do
                 logger.dbg("ereader: item.type", item.type)
@@ -496,17 +497,20 @@ function InstapaperAPIManager:getArticles(limit, have)
                         -- If the API ever starts returning a table, just use it directly
                         deleted_ids = item.delete_ids
                     end
+                elseif item.type == "highlight" then
+                    logger.dbg("ereader: inserting highlight!")
+                    table.insert(highlights, item)
                 else 
                     --user object… just ignore them for now
                 end
             end
             
-            return true, articles, deleted_ids, nil
+            return true, articles, highlights, deleted_ids, nil
         else
-            return false, {}, {},  "Failed to parse response"
+            return false, {}, {}, {},  "Failed to parse response"
         end
     else
-        return false, {}, {}, error_message
+        return false, {}, {}, {}, error_message
     end
 end
 
@@ -518,7 +522,7 @@ function InstapaperAPIManager:getArticleText(bookmark_id)
     -- Generate OAuth parameters including bookmark_id for signature
     local params = self:generateOAuthParams({
         oauth_token = self.oauth_token,
-        bookmark_id = tostring(bookmark_id)
+        bookmark_id = string.format("%d", bookmark_id)
     })
     
     -- Build and execute request (POST with all params in signature)
@@ -540,16 +544,22 @@ function InstapaperAPIManager:getHighlights(bookmark_id)
     -- Generate OAuth parameters including bookmark_id for signature
     local params = self:generateOAuthParams({
         oauth_token = self.oauth_token,
-        bookmark_id = tostring(bookmark_id)
+        bookmark_id = string.format("%d", bookmark_id)
     })
     
     -- Build and execute request (POST with all params in signature)
     -- According to API docs: /api/1.1/bookmarks/<bookmark-id>/highlights
-    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1.1/bookmarks/" .. tostring(bookmark_id) .. "/highlights", params, self.oauth_token_secret)
+    local request = self:buildOAuthRequest("POST", self.api_base .. "/api/1.1/bookmarks/" .. string.format("%d", bookmark_id) .. "/highlights", params, self.oauth_token_secret)
     local success, body, error_message = self:executeRequest(request)
     
     if success then
-        return true, body, nil
+        -- Parse the JSON response
+        local highlights = JSONUtils.decode(body)
+        if highlights then
+            return true, highlights, nil
+        else
+            return false, {}, "Failed to parse highlights response"
+        end
     else
         return false, {}, error_message
     end
@@ -560,15 +570,15 @@ function InstapaperAPIManager:addArticle(url)
 end
 
 function InstapaperAPIManager:archiveArticle(bookmark_id)    
-    return self:executeQueueableRequest("/api/1/bookmarks/archive", {bookmark_id = tostring(bookmark_id)})
+    return self:executeQueueableRequest("/api/1/bookmarks/archive", {bookmark_id = string.format("%d", bookmark_id)})
 end
 
 function InstapaperAPIManager:favoriteArticle(bookmark_id)    
-    return self:executeQueueableRequest("/api/1/bookmarks/star", {bookmark_id = tostring(bookmark_id)})
+    return self:executeQueueableRequest("/api/1/bookmarks/star", {bookmark_id = string.format("%d", bookmark_id)})
 end
 
 function InstapaperAPIManager:unfavoriteArticle(bookmark_id)    
-    return self:executeQueueableRequest("/api/1/bookmarks/unstar", {bookmark_id = tostring(bookmark_id)})
+    return self:executeQueueableRequest("/api/1/bookmarks/unstar", {bookmark_id = string.format("%d", bookmark_id)})
 end
 
 -- Queue management methods

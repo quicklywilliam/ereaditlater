@@ -11,6 +11,7 @@ describe("Instapaper offline queueing", function()
         InstapaperManager = require("InstapaperManager")
         InstapaperAPIManager = require("lib/instapaperapimanager")
         NetworkMgr = require("ui/network/manager")
+        Device = require("device")
         -- Patch NetworkMgr for mocking
         orig_isOnline = NetworkMgr.isOnline
     end)
@@ -168,9 +169,8 @@ describe("Instapaper offline queueing", function()
                 return true, "test.html"
             end
             -- Download
-            local ok, article = InstapaperManager:downloadArticle(dummy_bookmark_id)
+            local ok = InstapaperManager:downloadArticleIfNeeded(dummy_bookmark_id)
             assert.is_true(ok)
-            assert.is_table(article)
             assert.is_truthy(stored_html)
             assert.matches("hello world", stored_html)
         end)
@@ -194,9 +194,8 @@ describe("Instapaper offline queueing", function()
                 return true, "test.html"
             end
             -- Download
-            local ok, article = InstapaperManager:downloadArticle(dummy_bookmark_id)
+            local ok = InstapaperManager:downloadArticleIfNeeded(dummy_bookmark_id)
             assert.is_true(ok)
-            assert.is_table(article)
             assert.is_truthy(stored_html)
             assert.matches("data:image/jpeg;base64", stored_html)
             assert.not_matches(img_url, stored_html)
@@ -216,15 +215,90 @@ describe("Instapaper offline queueing", function()
                     html_filename = "test.html"
                 }
             end
-            InstapaperManager.storage.getArticleHTML = function(_, filename)
-                assert.equals("test.html", filename)
-                return html_content
+            InstapaperManager.storage.articleHTMLExists = function(_, filename)
+                return true
             end
             -- Download
-            local ok, article = InstapaperManager:downloadArticle(dummy_bookmark_id)
+            local ok = InstapaperManager:downloadArticleIfNeeded(dummy_bookmark_id)
             assert.is_true(ok)
-            assert.is_table(article)
-            assert.equals(html_content, article.html)
         end)
+    end)
+
+    it("should authenticate against the server and download a list of bookmarks", function()
+        -- Skip this test if no real credentials are available
+        local api_manager = InstapaperAPIManager:instapaperAPIManager()
+        
+        -- Load development credentials for testing
+        local function loadDevCredentials()
+            local stored_username = ""
+            local stored_password = ""
+            
+            local home = "/mnt/onboard/"
+            if Device:isEmulator() then
+                home = os.getenv("HOME")
+            end
+            local secrets_path = home .. "/.config/koreader/auth.txt"
+            
+            local file = io.open(secrets_path, "r")
+            if file then
+                local content = file:read("*all")
+                file:close()
+                
+                for key, value in string.gmatch(content, '"([^"]+)"%s*=%s*"([^"]+)"') do
+                    if key == "instapaper_username" then
+                        stored_username = value
+                    elseif key == "instapaper_password" then
+                        stored_password = value
+                    end
+                end
+            end
+            return stored_username, stored_password
+        end
+        
+        local username, password = loadDevCredentials()
+            
+        if not username or not password then
+            print("Skipping direct API test - no credentials available in auth.txt")
+            print("Please create ~/.config/koreader/auth.txt with:")
+            print('  "instapaper_username" = "your_username"')
+            print('  "instapaper_password" = "your_password"')
+            return
+        end
+        
+        local auth_success, auth_params, auth_error = api_manager:authenticate(username, password)
+        
+        assert.is_true(auth_success)
+        assert.is_not_nil(api_manager.oauth_token)
+        assert.is_not_nil(api_manager.oauth_token_secret)
+
+        -- Generate OAuth parameters with API-specific additions
+        local params = api_manager:generateOAuthParams({
+            oauth_token = api_manager.oauth_token,
+            limit = 10
+        })
+        
+        local request = api_manager:buildOAuthRequest("POST", api_manager.api_base .. "/api/1/bookmarks/list", params, api_manager.oauth_token_secret)
+        local success, body, error_message = api_manager:executeRequest(request)
+        
+        assert.is_true(success)
+        assert.is_true(body and #body > 0)
+        
+        -- Save the raw response to a file – useful for building specs
+        save_to_file = false
+        if save_to_file then
+            local raw_response_file = "raw_api_response.txt"
+            
+            local file = io.open(raw_response_file, "w")
+            if file then
+                file:write("Success: " .. tostring(success) .. "\n")
+                file:write("Error: " .. tostring(error_message) .. "\n")
+                file:write("Body:\n")
+                file:write(body or "")
+                file:close()
+                print("Raw response saved to:", raw_response_file)
+            else
+                print("Failed to save raw response to file")
+            end
+        end
     end)
 end) 

@@ -98,7 +98,7 @@ function InstapaperManager:syncReads()
     -- Call API with 'have' parameter to get new articles and deleted IDs
     -- The 'have' parameter tells Instapaper which articles we already have,
     -- so it only returns new articles and a list of deleted article IDs
-    local success, articles, deleted_ids, error_message = self.instapaper_api_manager:getArticles(200, existing_bookmark_ids)
+    local success, articles, highlights, deleted_ids, error_message = self.instapaper_api_manager:getArticles(200, existing_bookmark_ids)
     
     if success then
         local new_count = 0
@@ -110,6 +110,33 @@ function InstapaperManager:syncReads()
                 self.storage:storeArticleMetadata(article)
                 new_count = new_count + 1
             end
+        end
+
+        -- Store new highlights in our database
+        logger.dbg("ereader: highlights ", highlights)
+        if highlights then
+            -- Group highlights by bookmark_id since they come as a flat array
+            local highlights_by_bookmark = {}
+            for _, highlight in ipairs(highlights) do
+                logger.dbg("ereader: highlight")
+
+                local bookmark_id = highlight.bookmark_id
+                if not highlights_by_bookmark[bookmark_id] then
+                    highlights_by_bookmark[bookmark_id] = {}
+                end
+                table.insert(highlights_by_bookmark[bookmark_id], highlight)
+            end
+            
+            local highlights_count = 0
+            for bookmark_id, article_highlights in pairs(highlights_by_bookmark) do
+                local success = self.storage:storeHighlights(bookmark_id, article_highlights)
+                if success then
+                    highlights_count = highlights_count + #article_highlights
+                else
+                    logger.warn("ereader: Failed to store highlights for bookmark_id:", bookmark_id)
+                end
+            end
+            logger.dbg("ereader: Stored", highlights_count, "highlights from", #highlights, "articles")
         end
         
         -- Handle deleted articles - remove them from our local database
@@ -287,24 +314,15 @@ function InstapaperManager:addArticle(url)
     end
 end
 
-function InstapaperManager:downloadArticle(bookmark_id)
+function InstapaperManager:downloadArticleIfNeeded(bookmark_id)
     if not self:isAuthenticated() then
         logger.err("ereader: Cannot download article - not authenticated")
         return false, "Not authenticated"
     end
     -- Check if we already have this article
-    local existing = self.storage:getArticle(bookmark_id)
-    if existing then
-        -- Load the HTML content from file
-        local html_content = self.storage:getArticleHTML(existing.html_filename)
-        if html_content and #html_content > 0 then
-            -- Add HTML content to the existing article data
-            existing.html = html_content
-            logger.dbg("ereader: Article already downloaded:", bookmark_id)
-            return true, existing
-        else
-            logger.dbg("ereader: Article exists but has no HTML content, will download")
-        end
+    
+    if self.storage:articleHTMLExists(bookmark_id) then
+            return true, nil
     end
     -- Find the article metadata from our database store
     local article_meta = self.storage:getArticle(bookmark_id)
@@ -347,9 +365,7 @@ function InstapaperManager:downloadArticle(bookmark_id)
         return false, "Failed to store article"
     end
     logger.dbg("ereader: Successfully downloaded and stored article:", bookmark_id)
-    -- Return the stored article
-    local stored_article = self.storage:getArticle(bookmark_id)
-    return true, stored_article
+    return true, nil
 end
 
 function InstapaperManager.getDomain(url)
@@ -435,6 +451,34 @@ end
 
 function InstapaperManager:getArticleThumbnail(bookmark_id)
     return self.storage:getArticleThumbnail(bookmark_id)
+end
+
+function InstapaperManager:getArticleHighlights(bookmark_id)
+    if not self:isAuthenticated() then
+        logger.err("ereader: Cannot fetch highlights - not authenticated")
+        return false, "Not authenticated"
+    end
+    
+    logger.dbg("ereader: Fetching highlights for bookmark_id:", bookmark_id)
+    
+    local success, highlights, error_message = self.instapaper_api_manager:getHighlights(bookmark_id)
+    if not success then
+        logger.err("ereader: Failed to fetch highlights:", error_message)
+        return false, error_message
+    end
+    
+    -- Store highlights in database
+    local store_success = self.storage:storeHighlights(bookmark_id, highlights)
+    if not store_success then
+        logger.warn("ereader: Failed to store highlights in database for bookmark_id:", bookmark_id)
+    end
+    
+    logger.dbg("ereader: Successfully fetched and stored", #highlights, "highlights for bookmark_id:", bookmark_id)
+    return true, nil
+end
+
+function InstapaperManager:getStoredArticleHighlights(bookmark_id)
+    return self.storage:getHighlights(bookmark_id)
 end
 
 return InstapaperManager

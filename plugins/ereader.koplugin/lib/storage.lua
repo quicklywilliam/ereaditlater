@@ -4,11 +4,12 @@ local SQ3 = require("lua-ljsqlite3/init")
 local lfs = require("libs/libkoreader-lfs")
 local logger = require("logger")
 local util = require("util")
+local ffiUtil = require("ffi/util")
 
 local Storage = {}
 
 -- Database schema version
-local DB_SCHEMA_VERSION = 3
+local DB_SCHEMA_VERSION = 4
 
 -- Database schema for Instapaper articles
 local INSTAPAPER_DB_SCHEMA = [[
@@ -37,6 +38,25 @@ local INSTAPAPER_DB_SCHEMA = [[
     CREATE INDEX IF NOT EXISTS idx_articles_sync_status ON articles(sync_status);
     CREATE INDEX IF NOT EXISTS idx_articles_time_added ON articles(time_added);
     CREATE INDEX IF NOT EXISTS idx_articles_progress ON articles(progress);
+    
+    -- Highlights table - stores highlights from Instapaper articles
+    CREATE TABLE IF NOT EXISTS highlights (
+        id                  INTEGER PRIMARY KEY,
+        bookmark_id         INTEGER NOT NULL,        -- Instapaper's bookmark ID
+        highlight_id        INTEGER NOT NULL,        -- Instapaper's highlight ID
+        text                TEXT NOT NULL,           -- Highlighted text
+        note                TEXT,                    -- User's note (can be NULL)
+        position            INTEGER DEFAULT 0,       -- Text position in the article
+        time_created        INTEGER NOT NULL,        -- Unix timestamp when created
+        time_updated        INTEGER NOT NULL,        -- Unix timestamp when last updated
+        sync_status         TEXT DEFAULT 'synced',   -- 'synced', 'pending', 'error'
+        UNIQUE(bookmark_id, highlight_id)
+    );
+    
+    -- Create indexes for highlights table
+    CREATE INDEX IF NOT EXISTS idx_highlights_bookmark_id ON highlights(bookmark_id);
+    CREATE INDEX IF NOT EXISTS idx_highlights_highlight_id ON highlights(highlight_id);
+    CREATE INDEX IF NOT EXISTS idx_highlights_sync_status ON highlights(sync_status);
 ]]
 
 function Storage:new()
@@ -365,6 +385,15 @@ function Storage:getArticle(bookmark_id)
     return nil
 end
 
+function Storage:articleHTMLExists(bookmark_id)
+    local existing = self:getArticle(bookmark_id)
+    if existing and existing.html_filename and lfs.attributes(existing.html_filename, "mode") then
+        return true
+    end
+
+    return false
+end
+
 -- Get article HTML content
 function Storage:getArticleHTML(html_filename)
     local filepath = self.instapaper_dir .. "/" .. html_filename
@@ -484,6 +513,19 @@ function Storage:deleteArticle(bookmark_id)
     local row = stmt:reset():bind(bookmark_id):step()
     local html_filename = row and row[1]
     
+    -- Delete highlights first
+    local delete_highlights_stmt = self.db_conn:prepare([[
+        DELETE FROM highlights WHERE bookmark_id = ?
+    ]])
+    
+    local ok, err = pcall(function()
+        delete_highlights_stmt:reset():bind(bookmark_id):step()
+    end)
+    
+    if not ok then
+        logger.warn("ereader: Failed to delete highlights from database:", err)
+    end
+    
     -- Delete from database
     local delete_stmt = self.db_conn:prepare([[
         DELETE FROM articles WHERE bookmark_id = ?
@@ -525,28 +567,36 @@ end
 -- Clear all articles from database and filesystem
 function Storage:clearAll()
     self:clearThumbnails()
+    
+    -- Remove all html files and sdr directories
+    for file in lfs.dir(self.instapaper_dir) do
+        if file ~= "." and file ~= ".." then
+            local filepath = self.instapaper_dir .. "/" .. file
+            local attr = lfs.attributes(filepath)
+            
+            if attr then
+                if file:match(".html$") and attr.mode == "file" then
+                    -- Remove HTML files
+                    local success, err = os.remove(filepath)
+                    if not success then
+                        logger.warn("ereader: Failed to remove html file:", filepath, err)
+                    end
+                elseif file:match(".sdr$") and attr.mode == "directory" then
+                    -- Remove SDR directories using ffiUtil.purgeDir
+                    local success, err = ffiUtil.purgeDir(filepath)
+                    if not success then
+                        logger.warn("ereader: Failed to remove sdr directory:", filepath, err)
+                    end
+                end
+            end
+        end
+    end
+
     self:openDB()
-    
-    -- Get all filenames to delete
-    local stmt = self.db_conn:prepare([[
-        SELECT html_filename FROM articles WHERE html_filename IS NOT NULL
-    ]])
-    
-    local filenames = {}
-    local row = stmt:reset():step()
-    while row do
-        table.insert(filenames, row[1])
-        row = stmt:step()
-    end
-    
-    -- Delete HTML files
-    for _, filename in ipairs(filenames) do
-        local filepath = self.instapaper_dir .. "/" .. filename
-        os.remove(filepath)
-    end
     
     -- Clear database
     self.db_conn:exec("DELETE FROM articles")
+    self.db_conn:exec("DELETE FROM highlights")
     
     self:closeDB()
     logger.dbg("ereader: Cleared all articles from database and filesystem")
@@ -683,6 +733,168 @@ function Storage:updateArticleStatus(bookmark_id, status_type, value)
     self:closeDB()
     logger.dbg("ereader: Updated article status:", bookmark_id, field, value)
     return true
+end
+
+-- Store highlights for an article
+function Storage:storeHighlights(bookmark_id, highlights)
+    -- Ensure bookmark_id is a number
+    bookmark_id = tonumber(bookmark_id)
+    if not bookmark_id then
+        logger.err("ereader: Invalid bookmark_id:", bookmark_id)
+        return false, "Invalid bookmark_id"
+    end
+    
+    if not highlights or #highlights == 0 then
+        logger.dbg("ereader: No highlights to store for bookmark_id:", bookmark_id)
+        return true
+    end
+    
+    self:openDB()
+    
+    -- First, delete existing highlights for this article
+    local delete_stmt = self.db_conn:prepare([[
+        DELETE FROM highlights WHERE bookmark_id = ?
+    ]])
+    
+    local ok, err = pcall(function()
+        delete_stmt:reset():bind(bookmark_id):step()
+    end)
+    
+    if not ok then
+        logger.err("ereader: Failed to delete existing highlights:", err)
+        self:closeDB()
+        return false, "Failed to delete existing highlights: " .. tostring(err)
+    end
+    
+    -- Insert new highlights
+    local insert_stmt = self.db_conn:prepare([[
+        INSERT INTO highlights (
+            bookmark_id, highlight_id, text, note, position, 
+            time_created, time_updated, sync_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ]])
+    
+    local current_time = os.time()
+    local inserted_count = 0
+    
+    for _, highlight in ipairs(highlights) do
+        -- Ensure all values have the correct types for SQLite
+        local highlight_id = tonumber(highlight.highlight_id) or 0
+        local text = tostring(highlight.text or "")
+        local note = highlight.note
+        local position = tonumber(highlight.position) or 0
+        local time_created = tonumber(highlight.time) or current_time
+        
+        local ok, err = pcall(function()
+            insert_stmt:reset():bind(
+                bookmark_id,
+                highlight_id,
+                text,
+                note,
+                position,
+                time_created,
+                current_time,
+                "synced"
+            ):step()
+        end)
+        
+        if not ok then
+            logger.err("ereader: Failed to insert highlight:", err)
+            self:closeDB()
+            return false, "Failed to insert highlight: " .. tostring(err)
+        end
+        
+        inserted_count = inserted_count + 1
+    end
+    
+    self:closeDB()
+    logger.dbg("ereader: Stored", inserted_count, "highlights for bookmark_id:", bookmark_id)
+    return true
+end
+
+-- Get highlights for an article
+function Storage:getHighlights(bookmark_id)
+    self:openDB()
+    
+    local stmt = self.db_conn:prepare([[
+        SELECT * FROM highlights WHERE bookmark_id = ? ORDER BY position ASC
+    ]])
+    
+    local highlights = {}
+    local row = stmt:reset():bind(bookmark_id):step()
+    while row do
+        local highlight = {
+            id = row[1],
+            bookmark_id = row[2],
+            highlight_id = row[3],
+            text = row[4],
+            note = row[5],
+            position = row[6],
+            time_created = row[7],
+            time_updated = row[8],
+            sync_status = row[9]
+        }
+        table.insert(highlights, highlight)
+        row = stmt:step()
+    end
+    
+    self:closeDB()
+    logger.dbg("ereader: Retrieved", #highlights, "highlights for bookmark_id:", bookmark_id)
+    return highlights
+end
+
+-- Delete highlights for an article
+function Storage:deleteHighlights(bookmark_id)
+    self:openDB()
+    
+    local stmt = self.db_conn:prepare([[
+        DELETE FROM highlights WHERE bookmark_id = ?
+    ]])
+    
+    local ok, err = pcall(function()
+        stmt:reset():bind(bookmark_id):step()
+    end)
+    
+    if not ok then
+        logger.err("ereader: Failed to delete highlights:", err)
+        self:closeDB()
+        return false, "Failed to delete highlights: " .. tostring(err)
+    end
+    
+    self:closeDB()
+    logger.dbg("ereader: Deleted highlights for bookmark_id:", bookmark_id)
+    return true
+end
+
+-- Get all highlights from the database
+function Storage:getAllHighlights()
+    self:openDB()
+    
+    local stmt = self.db_conn:prepare([[
+        SELECT * FROM highlights ORDER BY bookmark_id ASC, position ASC
+    ]])
+    
+    local highlights = {}
+    local row = stmt:reset():step()
+    while row do
+        local highlight = {
+            id = row[1],
+            bookmark_id = row[2],
+            highlight_id = row[3],
+            text = row[4],
+            note = row[5],
+            position = row[6],
+            time_created = row[7],
+            time_updated = row[8],
+            sync_status = row[9]
+        }
+        table.insert(highlights, highlight)
+        row = stmt:step()
+    end
+    
+    self:closeDB()
+    logger.dbg("ereader: Retrieved", #highlights, "highlights from database")
+    return highlights
 end
 
 return Storage 

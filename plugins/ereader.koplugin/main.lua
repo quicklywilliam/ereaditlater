@@ -598,15 +598,22 @@ function Ereader:showArticleContent(article)
     
     UIManager:scheduleIn(0.1, function()
         -- Download and get article content
-        local success, result = self.instapaperManager:downloadArticle(article.bookmark_id)
+        local success, error_message = self.instapaperManager:downloadArticleIfNeeded(article.bookmark_id)
         UIManager:close(info)
         if not success then
             UIManager:show(ConfirmBox:new{
-                text = _("Failed to load article: ") .. (result or _("Unknown error")),
+                text = _("Failed to load article: ") .. (error_message or _("Unknown error")),
                 ok_text = _("OK"),
             })
             return
         end
+
+        -- get article highlights
+        local success, error_message = self.instapaperManager:getArticleHighlights(article.bookmark_id)
+        if not success then
+            logger.dbg("ereader: get highlights failed:", result)
+        end
+
         -- Get the file path from storage
         local file_path = self.instapaperManager.storage:getArticleFilePath(article.bookmark_id)
         if not file_path then

@@ -31,8 +31,10 @@ local ReaderEreader = InputContainer:extend{
 }
 
 function ReaderEreader:init()
-    -- Check if this is an ReaderEreader article by examining the document file path
+    self.instapaperManager = InstapaperManager:instapaperManager()
+
     if self.ui and self.ui.document and self.ui.document.file then
+
         local file_path = self.ui.document.file
         if string.find(file_path, "/ereader/") or string.find(file_path, "ereader") then
             self.is_ereader_document = true
@@ -47,6 +49,8 @@ function ReaderEreader:init()
             
             -- Register touch zones for showing/hiding toolbar
             self:setupTouchZones()
+
+            self:loadHighlights()
             
             -- Safely register to main menu - check if ReaderEreader is ready
             if self.ui.postInitCallback then
@@ -71,8 +75,6 @@ function ReaderEreader:init()
     if not self.ui then
         self:autoRegisterWithReaderUI()
     end
-
-    self.instapaperManager = InstapaperManager:instapaperManager()
     
     -- delegate gesture listener to ReaderEreader, use empty table instead of nil
     self.ges_events = {}
@@ -449,6 +451,87 @@ function ReaderEreader:onUnfavoriteArticle()
             })
         end
     end)
+end
+
+function ReaderEreader:loadHighlights()
+    if not self.current_article or not self.current_article.bookmark_id then
+        logger.warn("ereader: No current article or bookmark_id for loading highlights")
+        return
+    end
+    
+    -- Check if highlights are already loaded to prevent duplicates
+    if self.highlights_loaded then
+        logger.dbg("ereader: Highlights already loaded for bookmark_id:", self.current_article.bookmark_id)
+        return
+    end
+    
+    local highlights = self.instapaperManager:getStoredArticleHighlights(self.current_article.bookmark_id)
+    if not highlights or #highlights == 0 then
+        logger.dbg("ereader: No stored highlights to load for bookmark_id:", self.current_article.bookmark_id)
+        return
+    end
+    for _, api_highlight in ipairs(highlights) do
+        -- 1. Find all occurrences of the text in the document
+        local search_results = self.ui.document:findAllText(api_highlight.text, false, 0, 100, false)
+        -- 2. Use the position parameter to select the correct occurrence (0-based index from API)
+        local pos = tonumber(api_highlight.position)
+        if search_results and pos and pos >= 0 and search_results[pos + 1] then
+            local result = search_results[pos + 1]
+            -- 3. Get the XPointer for the start position (already in result.start)
+            local start_xp = result.start
+            -- 4. Get the XPointer for the end position (already in result["end"])
+            local end_xp = result["end"]
+            
+            -- 5. Create the highlight annotation
+            local chapter = nil
+            if self.ui.toc then
+                -- Get page number from XPointer
+                local page = self.ui.document:getPageFromXPointer(start_xp)
+                if page then
+                    chapter = self.ui.toc:getTocTitleByPage(page)
+                end
+            end
+            
+            -- Convert timestamp to proper format
+            local datetime = api_highlight.timestamp
+            if datetime and type(datetime) == "number" then
+                datetime = os.date("%Y-%m-%d %H:%M:%S", datetime)
+            elseif not datetime then
+                datetime = os.date("%Y-%m-%d %H:%M:%S")
+            end
+            
+            -- Get page number from XPointer
+            local page_number = self.ui.document:getPageFromXPointer(start_xp)
+            
+            local highlight = {
+                drawer = "lighten",
+                page = start_xp,  -- XPointer for rolling documents
+                pos0 = start_xp,  -- XPointer for start position
+                pos1 = end_xp,    -- XPointer for end position
+                pageno = page_number,  -- Actual page number
+                text = api_highlight.text,  -- The highlighted text content
+                chapter = chapter,
+                datetime = datetime,
+                note = api_highlight.note,
+                color = "yellow"  -- Instapaper only supports one color
+            }
+            -- 6. Add to annotations
+            if self.ui.annotation and self.ui.annotation.addItem then
+                self.ui.annotation:addItem(highlight)
+            end
+        else
+            logger.warn("ereader: Could not find occurrence #" .. tostring(pos) .. " of text '" .. tostring(api_highlight.text) .. "' in document for highlight.")
+        end
+    end
+    
+    -- Mark highlights as loaded
+    self.highlights_loaded = true
+    logger.dbg("ereader: Loaded", #highlights, "highlights for bookmark_id:", self.current_article.bookmark_id)
+    
+    -- Force a redraw to show the highlights immediately
+    if self.ui and self.ui.view then
+        UIManager:setDirty(self.ui.view.dialog, "ui")
+    end
 end
 
 local function showEreaderEndOfBookDialog(self)
