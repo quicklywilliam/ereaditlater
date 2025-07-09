@@ -403,7 +403,7 @@ function Ereader:showArticles()
                 article = article,
                 instapaperManager = self.instapaperManager,
                 callback = function()
-                    self:showArticleContent(article)
+                    self:loadArticleContent(article)
                 end,
             }
             table.insert(items, item)
@@ -591,71 +591,72 @@ function Ereader:showMenu()
     UIManager:show(menu_container)
 end
 
-function Ereader:showArticleContent(article)
-    -- Show loading message
-    local info = InfoMessage:new{ text = _("Downloading article...") }
-    UIManager:show(info)
-    
-    UIManager:scheduleIn(0.1, function()
-        -- Download and get article content
-        local success, error_message = self.instapaperManager:downloadArticleIfNeeded(article.bookmark_id)
-        UIManager:close(info)
-        if not success then
-            UIManager:show(ConfirmBox:new{
-                text = _("Failed to load article: ") .. (error_message or _("Unknown error")),
-                ok_text = _("OK"),
-            })
-            return
-        end
-
-        -- get article highlights
-        local success, error_message = self.instapaperManager:getArticleHighlights(article.bookmark_id)
-        if not success then
-            logger.dbg("ereader: get highlights failed:", result)
-        end
-
-        -- Get the file path from storage
-        local file_path = self.instapaperManager.storage:getArticleFilePath(article.bookmark_id)
-        if not file_path then
-            UIManager:show(ConfirmBox:new{
-                text = _("Article file not found"),
-                ok_text = _("OK"),
-            })
-            return
-        end
+function Ereader:loadArticleContent(article)
+    local filepath = self.instapaperManager:getCachedArticleFilePath(article.bookmark_id)
+    if filepath then
+        self:showReaderForArticle(article, filepath)
+    else
+        local info = InfoMessage:new{ text = _("Downloading article...") }
+        UIManager:show(info)
         
-        -- Store the current article for the ReaderEreader module
-        self.current_article = article
-        
-        -- Open the stored HTML file directly in KOReader
-        local ReaderUI = require("apps/reader/readerui")
-        local doc_settings = DocSettings:open(file_path)
-        local current_rotation = Screen:getRotationMode()
-        doc_settings:saveSetting("kopt_rotation_mode", current_rotation)
-        doc_settings:saveSetting("copt_rotation_mode", current_rotation)
-        doc_settings:flush()
-        ReaderUI:showReader(file_path)
-
-        -- Register our Ereader module after ReaderEreader is created
         UIManager:scheduleIn(0.1, function()
-            if ReaderUI.instance then
-                local ReaderEreader = require("readerereader")
-                local module_instance = ReaderEreader:new{
-                    ui = ReaderUI.instance,
-                    dialog = ReaderUI.instance,
-                    view = ReaderUI.instance.view,
-                    document = ReaderUI.instance.document,
-                    refresh_callback = function()
-                        -- Refresh the Ereader list view when returning from reader
-                        self:showArticles()
-                    end,
-                }
-                ReaderUI.instance:registerModule("readerereader", module_instance)
+            -- Download and get article content
+            local success, newfilepath, error_message = self.instapaperManager:downloadArticle(article.bookmark_id)
+            UIManager:close(info)
+            if not success then
+                UIManager:show(ConfirmBox:new{
+                    text = _("Failed to load article: ") .. (error_message or _("Unknown error")),
+                    ok_text = _("OK"),
+                })
+                return
             end
-        end)
+            
+            self:showReaderForArticle(article, newfilepath)
 
-        -- update the article list to show the downloaded article
-        self:showArticles()
+            -- update the article list to show the downloaded article
+            self:showArticles()
+        end)
+    end
+end
+
+function Ereader:showReaderForArticle(article, filepath)
+    -- Store the current article for the ReaderEreader module
+    self.current_article = article
+        
+    -- Open the stored HTML file directly in KOReader
+    local ReaderUI = require("apps/reader/readerui")
+    local doc_settings = DocSettings:open(filepath)
+    local current_rotation = Screen:getRotationMode()
+    doc_settings:saveSetting("kopt_rotation_mode", current_rotation)
+    doc_settings:saveSetting("copt_rotation_mode", current_rotation)
+    doc_settings:flush()
+    ReaderUI:showReader(filepath)
+
+    -- Register our Ereader module after ReaderEreader is created
+    UIManager:scheduleIn(0.1, function()
+        if ReaderUI.instance then
+            local ReaderEreader = require("readerereader")
+            local module_instance = ReaderEreader:new{
+                ui = ReaderUI.instance,
+                dialog = ReaderUI.instance,
+                view = ReaderUI.instance.view,
+                document = ReaderUI.instance.document,
+                refresh_callback = function()
+                    -- Refresh the Ereader list view when returning from reader
+                    self:showArticles()
+                end,
+            }
+            ReaderUI.instance:registerModule("readerereader", module_instance)
+            UIManager:nextTick(function()
+                -- get article highlights, load async
+                local success, error_message = self.instapaperManager:getArticleHighlights(article.bookmark_id)
+                if not success then
+                    logger.dbg("ereader: get highlights failed:", result)
+                end
+                -- loadHighlights, will fall back on local cache if getArticleHighlights fails
+                module_instance:loadHighlights()
+            end)
+        end
     end)
 end
 

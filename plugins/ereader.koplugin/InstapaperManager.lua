@@ -314,21 +314,21 @@ function InstapaperManager:addArticle(url)
     end
 end
 
-function InstapaperManager:downloadArticleIfNeeded(bookmark_id)
+function InstapaperManager:getCachedArticleFilePath(bookmark_id)
+    return self.storage:getArticleFilePathIfExists(bookmark_id)
+end
+
+function InstapaperManager:downloadArticle(bookmark_id)
     if not self:isAuthenticated() then
         logger.err("ereader: Cannot download article - not authenticated")
-        return false, "Not authenticated"
+        return false, nil, "Not authenticated"
     end
-    -- Check if we already have this article
-    
-    if self.storage:articleHTMLExists(bookmark_id) then
-            return true, nil
-    end
+
     -- Find the article metadata from our database store
     local article_meta = self.storage:getArticle(bookmark_id)
     if not article_meta then
         logger.err("ereader: Article not found in database:", bookmark_id)
-        return false, "Article not found"
+        return false, nil, "Article not found"
     end
     -- Download article text from API
     logger.dbg("ereader: Downloading article text for:", bookmark_id)
@@ -336,10 +336,10 @@ function InstapaperManager:downloadArticleIfNeeded(bookmark_id)
     if not success or not html_content then
         if error_message then
             logger.err("ereader: Failed to download article text:", bookmark_id, ":", error_message)
-            return false, error_message
+            return false, nil, error_message
         else 
             logger.err("ereader: Failed to download article text:", bookmark_id)
-            return false, "Failed to download article"
+            return false, nil, "Failed to download article"
         end
     end
     -- If the HTML does not contain a <body> tag, wrap it
@@ -359,13 +359,13 @@ function InstapaperManager:downloadArticleIfNeeded(bookmark_id)
         html_content = self:processHtmlImages(html_content, bookmark_id)
     end
     -- Store the article
-    local store_success, filename = self.storage:storeArticle(article_meta, html_content)
+    local store_success, filepath = self.storage:storeArticle(article_meta, html_content)
     if not store_success then
         logger.err("ereader: Failed to store article:", bookmark_id)
-        return false, "Failed to store article"
+        return false, nil, "Failed to store article"
     end
     logger.dbg("ereader: Successfully downloaded and stored article:", bookmark_id)
-    return true, nil
+    return true, filepath, nil
 end
 
 function InstapaperManager.getDomain(url)

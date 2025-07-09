@@ -265,7 +265,7 @@ function Storage:storeArticle(article_data, html_content)
         end
         self:closeDB()
         logger.dbg("ereader: Updated article:", article_data.title, "as", filename)
-        return true, filename
+        return true, filepath
     else
         -- Insert new article (full set of fields)
         local current_time = os.time()
@@ -301,7 +301,7 @@ function Storage:storeArticle(article_data, html_content)
         end
         self:closeDB()
         logger.dbg("ereader: Stored article:", article_data.title, "as", filename)
-        return true, filename
+        return true, filepath
     end
 end
 
@@ -385,14 +385,6 @@ function Storage:getArticle(bookmark_id)
     return nil
 end
 
-function Storage:articleHTMLExists(bookmark_id)
-    local existing = self:getArticle(bookmark_id)
-    if existing and existing.html_filename and lfs.attributes(existing.html_filename, "mode") then
-        return true
-    end
-
-    return false
-end
 
 -- Get article HTML content
 function Storage:getArticleHTML(html_filename)
@@ -407,11 +399,17 @@ function Storage:getArticleHTML(html_filename)
     return content
 end
 
--- Get full file path for an article
-function Storage:getArticleFilePath(bookmark_id)
-    local article = self:getArticle(bookmark_id)
-    if article and article.html_filename then
-        return self.instapaper_dir .. "/" .. article.html_filename
+-- Get full file path for an article, if the file exists
+function Storage:getArticleFilePathIfExists(bookmark_id)
+    local existing = self:getArticle(bookmark_id)
+
+    if not existing or not existing.html_filename then
+        return nil
+    end
+    
+    local filepath = self.instapaper_dir .. "/" .. existing.html_filename
+    if lfs.attributes(filepath, "mode") then
+        return filepath
     end
     return nil
 end

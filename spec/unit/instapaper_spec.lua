@@ -169,7 +169,7 @@ describe("Instapaper offline queueing", function()
                 return true, "test.html"
             end
             -- Download
-            local ok = InstapaperManager:downloadArticleIfNeeded(dummy_bookmark_id)
+            local ok = InstapaperManager:downloadArticle(dummy_bookmark_id)
             assert.is_true(ok)
             assert.is_truthy(stored_html)
             assert.matches("hello world", stored_html)
@@ -194,33 +194,11 @@ describe("Instapaper offline queueing", function()
                 return true, "test.html"
             end
             -- Download
-            local ok = InstapaperManager:downloadArticleIfNeeded(dummy_bookmark_id)
+            local ok = InstapaperManager:downloadArticle(dummy_bookmark_id)
             assert.is_true(ok)
             assert.is_truthy(stored_html)
             assert.matches("data:image/jpeg;base64", stored_html)
             assert.not_matches(img_url, stored_html)
-        end)
-
-        it("returns already stored article from filesystem without re-downloading", function()
-            -- Simulate article and HTML already stored
-            InstapaperManager.storage:storeArticleMetadata(dummy_article)
-            local html_content = "<body>cached content</body>"
-            InstapaperManager.storage.storeArticle = function() error("should not be called") end
-            InstapaperManager.instapaper_api_manager.getArticleText = function() error("should not be called") end
-            InstapaperManager.storage.getArticle = function(_, bookmark_id)
-                return {
-                    bookmark_id = bookmark_id,
-                    title = dummy_article.title,
-                    url = dummy_article.url,
-                    html_filename = "test.html"
-                }
-            end
-            InstapaperManager.storage.articleHTMLExists = function(_, filename)
-                return true
-            end
-            -- Download
-            local ok = InstapaperManager:downloadArticleIfNeeded(dummy_bookmark_id)
-            assert.is_true(ok)
         end)
     end)
 

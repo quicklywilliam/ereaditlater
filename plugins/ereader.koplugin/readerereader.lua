@@ -49,8 +49,6 @@ function ReaderEreader:init()
             
             -- Register touch zones for showing/hiding toolbar
             self:setupTouchZones()
-
-            self:loadHighlights()
             
             -- Safely register to main menu - check if ReaderEreader is ready
             if self.ui.postInitCallback then
